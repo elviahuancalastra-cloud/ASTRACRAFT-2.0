@@ -1,0 +1,2722 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTRACRAFT 2.1 — Simulador de Ingeniería Espacial</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+:root{
+  --cy:#06b6d4; --cy2:#22d3ee; --dg:#ef4444; --ok:#22c55e; --wn:#f59e0b; --pp:#a855f7;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;width:100%}
+body{
+  font-family:'Rajdhani',sans-serif;
+  background:#030712;
+  color:#e7eef6;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  user-select:none;
+  display:flex;
+  flex-direction:column;
+}
+/* Layout estructural (independiente de Tailwind, para que nunca colapse) */
+header{flex:0 0 auto}
+main{flex:1 1 auto;position:relative;width:100%;min-height:0;overflow:hidden}
+section{position:absolute;inset:0}
+.hidden{display:none!important}
+.font-orbitron{font-family:'Orbitron',sans-serif}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#070c14}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:var(--cy)}
+
+/* ---------- PANELES HUD ---------- */
+.panel{
+  background:linear-gradient(160deg,rgba(12,20,33,.93),rgba(6,10,18,.94));
+  border:1px solid rgba(34,211,238,.22);
+  box-shadow:0 0 26px rgba(6,182,212,.10), inset 0 0 26px rgba(6,182,212,.045);
+  backdrop-filter:blur(12px);
+}
+.panel-danger{
+  border-color:rgba(239,68,68,.55)!important;
+  box-shadow:0 0 30px rgba(239,68,68,.28), inset 0 0 26px rgba(239,68,68,.09)!important;
+}
+.hud-corners{position:relative}
+.hud-corners::before,.hud-corners::after{
+  content:'';position:absolute;width:16px;height:16px;border:2px solid var(--cy2);opacity:.75;pointer-events:none;
+}
+.hud-corners::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.hud-corners::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.hud-glow-text{text-shadow:0 0 10px rgba(34,211,238,.65)}
+.tracking-mega{letter-spacing:.28em}
+
+/* ---------- FONDO / ESCANEO ---------- */
+#canvas-container{position:absolute;inset:0;z-index:0}
+#danger-vignette{
+  position:absolute;inset:0;z-index:15;pointer-events:none;opacity:0;transition:opacity .4s ease;
+  background:radial-gradient(ellipse at center,rgba(239,68,68,0) 34%,rgba(239,68,68,.30) 70%,rgba(110,6,6,.85) 100%);
+}
+#danger-vignette.critical{animation:vignettePulse 1.1s ease-in-out infinite}
+@keyframes vignettePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.45)}}
+.scanlines::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:14;
+  background:linear-gradient(rgba(18,16,16,0) 50%,rgba(0,0,0,.22) 50%);
+  background-size:100% 4px;opacity:.45;mix-blend-mode:multiply;
+}
+
+/* ---------- BOTONES ---------- */
+.btn-tech{
+  background:linear-gradient(135deg,rgba(6,182,212,.22),rgba(14,116,144,.45));
+  border:1px solid rgba(34,211,238,.75);
+  transition:all .18s ease;
+}
+.btn-tech:hover{background:linear-gradient(135deg,rgba(6,182,212,.42),rgba(14,116,144,.7));box-shadow:0 0 18px rgba(34,211,238,.5);transform:translateY(-1px)}
+.btn-tech:active{transform:translateY(1px)}
+.btn-danger{
+  background:linear-gradient(135deg,rgba(239,68,68,.28),rgba(127,29,29,.5));
+  border:1px solid rgba(248,113,113,.8);transition:all .18s ease;
+}
+.btn-danger:hover{box-shadow:0 0 20px rgba(239,68,68,.55)}
+
+/* ---------- TARJETAS ---------- */
+.dest-card{transition:transform .25s cubic-bezier(.2,.8,.2,1),border-color .25s,box-shadow .25s;cursor:pointer}
+.dest-card:hover{transform:translateY(-6px)}
+.dest-card .dest-glow{opacity:0;transition:opacity .3s}
+.dest-card:hover .dest-glow{opacity:1}
+.comp-card{transition:all .16s ease;cursor:pointer}
+.comp-card:hover{transform:translateX(-2px)}
+
+/* ---------- MEDIDORES ---------- */
+.track{height:6px;background:#0b1420;border:1px solid #16233a;border-radius:99px;overflow:hidden}
+.track.thick{height:10px}
+.fill{height:100%;border-radius:99px;transition:width .35s ease,background .35s ease}
+
+/* ---------- ALERTA ENTRANTE ---------- */
+#alert-overlay{z-index:32}
+.alert-scan{
+  position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(180deg,rgba(239,68,68,.10) 0 2px,transparent 2px 6px);
+  animation:alertScan 1.4s linear infinite;
+}
+@keyframes alertScan{from{background-position-y:0}to{background-position-y:24px}}
+.countdown-ring{
+  width:104px;height:104px;border-radius:50%;display:grid;place-items:center;position:relative;
+  border:3px solid rgba(248,113,113,.35);
+}
+.countdown-ring::before{
+  content:'';position:absolute;inset:-3px;border-radius:50%;border:3px solid transparent;
+  border-top-color:#ef4444;border-right-color:rgba(239,68,68,.55);
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pulse-red{animation:pulseRed 1s ease-in-out infinite}
+@keyframes pulseRed{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+
+/* ---------- SHAKE DE CÁMARA ---------- */
+.shake-soft{animation:shakeSoft .5s linear}
+.shake-hard{animation:shakeHard .7s linear}
+@keyframes shakeSoft{
+  0%,100%{transform:translate(0,0)}
+  20%{transform:translate(-4px,2px)}40%{transform:translate(4px,-2px)}
+  60%{transform:translate(-3px,-2px)}80%{transform:translate(3px,2px)}
+}
+@keyframes shakeHard{
+  0%,100%{transform:translate(0,0) rotate(0)}
+  10%{transform:translate(-9px,5px) rotate(-.3deg)}25%{transform:translate(8px,-6px) rotate(.35deg)}
+  40%{transform:translate(-7px,-4px) rotate(-.25deg)}55%{transform:translate(7px,5px) rotate(.3deg)}
+  70%{transform:translate(-5px,3px) rotate(-.2deg)}85%{transform:translate(4px,-3px) rotate(.15deg)}
+}
+
+/* ---------- APARICIÓN ---------- */
+.fade-up{animation:fadeUp .32s cubic-bezier(.2,.8,.2,1) both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+.pop-in{animation:popIn .28s cubic-bezier(.2,.9,.2,1) both}
+@keyframes popIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+
+/* ---------- VARIOS ---------- */
+.risk-chip{font-family:'Orbitron',sans-serif;letter-spacing:.08em}
+.blink{animation:blink 1.1s steps(2,end) infinite}
+@keyframes blink{50%{opacity:.25}}
+.tag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;border:1px solid}
+#load-screen{position:fixed;inset:0;z-index:99;background:#030712;display:grid;place-items:center;transition:opacity .5s}
+#load-screen.hide{opacity:0;pointer-events:none}
+.spinner{width:52px;height:52px;border:2px solid rgba(34,211,238,.2);border-top-color:#22d3ee;border-radius:50%;animation:spin 1s linear infinite}
+select,button{font-family:inherit}
+</style>
+</head>
+<body class="scanlines">
+
+
+<!-- ================= HEADER ================= -->
+<header class="relative z-30 h-16 shrink-0 border-b border-cyan-900/50 bg-[#060b14]/85 backdrop-blur-md px-4 md:px-6 flex items-center justify-between gap-4">
+  <div class="flex items-center gap-3 min-w-0">
+    <div class="p-2 bg-cyan-950/80 border border-cyan-500/40 rounded-lg text-cyan-400 shrink-0">
+      <i class="fa-solid fa-satellite-dish text-lg animate-pulse"></i>
+    </div>
+    <div class="min-w-0">
+      <h1 class="font-orbitron font-extrabold text-base md:text-xl tracking-[.18em] text-cyan-400 hud-glow-text leading-none">ASTRACRAFT <span class="text-cyan-600 text-xs align-top">2.1</span></h1>
+      <p class="text-[9px] md:text-[10px] text-slate-500 tracking-[.2em] font-mono mt-1 truncate">SIMULADOR DE INGENIERÍA ESPACIAL</p>
+    </div>
+  </div>
+
+  <div class="hidden lg:flex items-center gap-1.5 font-orbitron text-[10px]">
+    <div id="step-1-indicator" class="flex items-center gap-2 px-2.5 py-1.5 rounded border border-cyan-500 bg-cyan-500/15 text-cyan-300 font-bold">
+      <span class="w-4 h-4 rounded-full bg-cyan-500 text-gray-950 grid place-items-center text-[9px] font-black">1</span><span>DESTINO</span>
+    </div>
+    <i class="fa-solid fa-chevron-right text-slate-700 text-[9px]"></i>
+    <div id="step-2-indicator" class="flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/40 text-slate-500">
+      <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 grid place-items-center text-[9px] font-black">2</span><span>ENSAMBLAJE</span>
+    </div>
+    <i class="fa-solid fa-chevron-right text-slate-700 text-[9px]"></i>
+    <div id="step-3-indicator" class="flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/40 text-slate-500">
+      <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 grid place-items-center text-[9px] font-black">3</span><span>VUELO</span>
+    </div>
+    <i class="fa-solid fa-chevron-right text-slate-700 text-[9px]"></i>
+    <div id="step-4-indicator" class="flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/40 text-slate-500">
+      <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 grid place-items-center text-[9px] font-black">4</span><span>INFORME</span>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-2 shrink-0">
+    <div id="diff-badge" class="hidden items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-900/70 text-[10px] font-orbitron"></div>
+    <button id="toggle-audio-btn" class="flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-900/70 hover:border-cyan-500 text-[10px] text-slate-300 transition">
+      <i id="audio-icon" class="fa-solid fa-volume-high text-cyan-400"></i><span id="audio-label" class="hidden sm:inline">SONIDO: ON</span>
+    </button>
+  </div>
+</header>
+
+<main class="relative flex-1 w-full overflow-hidden">
+  <div id="canvas-container"></div>
+  <div id="danger-vignette"></div>
+
+  <div id="notification-toast" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-[60] px-5 py-3 rounded-lg bg-red-950/95 border border-red-500 text-red-100 font-mono text-xs shadow-2xl items-center gap-3 backdrop-blur-md max-w-[92vw]">
+    <i class="fa-solid fa-triangle-exclamation text-red-400"></i><span id="notification-text"></span>
+  </div>
+
+  <!-- ================= MODAL DIFICULTAD ================= -->
+  <div id="difficulty-modal" class="absolute inset-0 z-[45] flex items-center justify-center bg-[#030712]/90 backdrop-blur-md p-5">
+    <div class="panel hud-corners max-w-lg w-full rounded-2xl p-7 text-center pop-in">
+      <span class="text-[10px] font-mono text-cyan-400 tracking-mega block uppercase mb-2">Nivel de dificultad</span>
+      <h2 class="font-orbitron text-2xl md:text-3xl font-extrabold text-white mb-2">MODO DE MISIÓN</h2>
+      <p class="text-slate-400 text-xs font-mono mb-6">Elige tu nivel. Podrás cambiarlo al diseñar una nueva misión.</p>
+      <div class="space-y-3 text-left">
+        <button onclick="setDifficulty('junior')" class="w-full py-3 rounded-lg bg-emerald-950/60 border border-emerald-500/70 text-emerald-300 font-orbitron text-xs font-bold uppercase hover:bg-emerald-900/60 transition">
+          <i class="fa-solid fa-seedling mr-2"></i>Juvenil / Principiante
+        </button>
+        <p class="text-[10px] font-mono text-slate-500 px-1">Requisitos reducidos (−30% energía, −20% Δv), pistas educativas y anomalías explicadas.</p>
+        <button onclick="setDifficulty('intermediate')" class="w-full py-3 rounded-lg bg-cyan-950/60 border border-cyan-500/70 text-cyan-300 font-orbitron text-xs font-bold uppercase hover:bg-cyan-900/60 transition">
+          <i class="fa-solid fa-user-astronaut mr-2"></i>Intermedio
+        </button>
+        <p class="text-[10px] font-mono text-slate-500 px-1">Restricciones reales: Δv, enlace de comunicaciones, capacidad de lanzamiento y energía.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= FASE 1 ================= -->
+  <section id="phase-1-ui" class="absolute inset-0 z-20 flex flex-col justify-between p-5 md:p-10 bg-gradient-to-t from-[#030712] via-[#030712]/75 to-transparent overflow-y-auto">
+    <div class="text-center max-w-3xl mx-auto mt-2">
+      <span class="inline-block px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/50 text-cyan-400 font-mono text-[10px] mb-3 tracking-mega">CENTRO DE COMANDO Y CONTROL</span>
+      <h2 class="font-orbitron text-2xl md:text-5xl font-extrabold text-white mb-3 tracking-wide leading-tight">SELECCIONA EL DESTINO</h2>
+      <p class="text-slate-400 text-xs md:text-base leading-relaxed">Analiza las restricciones ambientales, los límites de carga útil y la intensidad solar antes de comprometer los recursos.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-6xl mx-auto w-full my-6" id="dest-grid"></div>
+
+    <div class="text-center mb-1">
+      <button onclick="openNasaPrediction()" class="px-3 py-1.5 rounded-full border border-cyan-700/60 bg-cyan-950/40 text-cyan-400 hover:text-cyan-200 hover:border-cyan-500 font-mono text-[10px] transition"><i class="fa-solid fa-satellite-dish mr-1"></i>Ver escenarios de anomalía con datos reales de NASA</button>
+    </div>
+    <div class="text-center font-mono text-[10px] text-slate-600 pb-1">Especificaciones de diseño aeroespacial · NASA JPL · Escala de riesgo 1–5</div>
+  </section>
+
+  <!-- ================= FASE 2 ================= -->
+  <section id="phase-2-ui" class="hidden absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 md:p-5">
+    <div class="pointer-events-auto w-full max-w-[1500px] mx-auto grid grid-cols-2 md:grid-cols-6 gap-2.5 panel rounded-xl p-3 md:p-3.5">
+      <div>
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-weight-hanging text-cyan-400"></i>MASA</span>
+        <div class="flex items-baseline gap-1 mt-1"><span id="stat-mass" class="font-orbitron font-bold text-base md:text-lg text-white">0</span><span id="stat-mass-limit" class="text-[10px] font-mono text-slate-500">/ 2,500 kg</span></div>
+        <div class="track mt-1.5"><div id="bar-mass" class="fill" style="width:0;background:#06b6d4"></div></div>
+      </div>
+      <div>
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-sack-dollar text-emerald-400"></i>PRESUPUESTO</span>
+        <div class="flex items-baseline gap-1 mt-1"><span id="stat-budget" class="font-orbitron font-bold text-base md:text-lg text-emerald-400">$0M</span><span id="stat-budget-limit" class="text-[10px] font-mono text-slate-500">/ $600M</span></div>
+        <div class="track mt-1.5"><div id="bar-budget" class="fill" style="width:0;background:#10b981"></div></div>
+      </div>
+      <div>
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-bolt text-amber-400"></i>ENERGÍA</span>
+        <div class="flex items-baseline gap-1 mt-1"><span id="stat-power" class="font-orbitron font-bold text-base md:text-lg text-amber-400">0 W</span><span id="stat-power-req" class="text-[10px] font-mono text-slate-500">/ 0 W</span></div>
+        <div class="track mt-1.5"><div id="bar-power" class="fill" style="width:0;background:#f59e0b"></div></div>
+      </div>
+      <div>
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-microscope text-purple-400"></i>CIENCIA</span>
+        <div class="flex items-baseline gap-1 mt-1"><span id="stat-science" class="font-orbitron font-bold text-base md:text-lg text-purple-300">0 pts</span></div>
+        <div class="track mt-1.5"><div id="bar-science" class="fill" style="width:0;background:#a855f7"></div></div>
+      </div>
+      <div>
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-satellite text-indigo-400"></i>ΔV</span>
+        <div class="flex items-baseline gap-1 mt-1"><span id="stat-deltav" class="font-orbitron font-bold text-base md:text-lg text-white">0.0</span><span id="stat-deltav-req" class="text-[10px] font-mono text-slate-500">/ 0.0</span></div>
+        <div class="track mt-1.5"><div id="bar-deltav" class="fill" style="width:0;background:#818cf8"></div></div>
+        <span id="stat-comm" class="text-[9px] font-mono text-slate-500 mt-1 block">ENLACE 0 / 0</span>
+      </div>
+      <div class="col-span-2 md:col-span-1">
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-shield-halved text-blue-400"></i>SISTEMAS</span>
+        <div class="flex items-baseline gap-2 mt-1">
+          <span id="stat-shield" class="font-orbitron font-bold text-xs text-blue-300">0%</span>
+          <span id="stat-thrust" class="font-orbitron font-bold text-xs text-orange-300">0 N</span>
+        </div>
+        <div class="text-[9px] font-mono text-slate-500 mt-1">ESTADO <span id="status-tag" class="text-emerald-400 font-bold">ÓPTIMO</span></div>
+      </div>
+    </div>
+
+    <div class="flex-1 my-2.5 flex justify-between items-start gap-3 relative overflow-hidden pointer-events-none">
+      <div class="pointer-events-auto hidden lg:flex flex-col gap-2 panel rounded-lg p-2.5 mt-1">
+        <button onclick="resetCamera3D()" class="px-2 py-1.5 rounded hover:bg-slate-800/80 text-slate-300 hover:text-cyan-400 transition text-[10px] font-mono flex items-center gap-2"><i class="fa-solid fa-camera"></i>Centrar vista</button>
+        <button onclick="toggleRotate3D()" class="px-2 py-1.5 rounded hover:bg-slate-800/80 text-slate-300 hover:text-cyan-400 transition text-[10px] font-mono flex items-center gap-2"><i class="fa-solid fa-rotate"></i>Auto-rotación</button>
+        <button onclick="openNasaPrediction()" class="px-2 py-1.5 rounded bg-cyan-950/70 border border-cyan-600/60 hover:bg-cyan-900/70 text-cyan-300 transition text-[10px] font-mono flex items-center gap-2"><i class="fa-solid fa-satellite-dish"></i>Predicción NASA</button>
+        <div class="text-[9px] font-mono text-slate-600 border-t border-slate-800 pt-2 mt-1 leading-relaxed">
+          <i class="fa-solid fa-mouse"></i> Arrastra · rota<br><i class="fa-solid fa-magnifying-glass"></i> Rueda · zoom
+        </div>
+      </div>
+
+      <div id="readiness-panel" class="pointer-events-auto hidden md:flex flex-col gap-1.5 panel rounded-lg p-3 mt-1 w-56">
+        <span class="text-[10px] font-mono text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-gauge-high text-cyan-400"></i>PROBABILIDAD DE ÉXITO</span>
+        <span id="readiness-pct" class="font-orbitron font-extrabold text-2xl text-cyan-400">—</span>
+        <div class="track thick"><div id="bar-readiness" class="fill" style="width:0;background:#06b6d4"></div></div>
+        <div id="readiness-list" class="mt-1 space-y-1 text-[9.5px] font-mono text-slate-500 leading-snug"></div>
+      </div>
+
+      <div class="pointer-events-auto w-full md:w-[380px] max-h-[calc(100vh-15rem)] panel rounded-xl p-3.5 flex flex-col ml-auto">
+        <h3 class="font-orbitron font-bold text-xs text-cyan-400 mb-2.5 flex items-center justify-between border-b border-slate-800 pb-2">
+          <span>MÓDULOS</span><span class="text-[10px] font-mono text-slate-500" id="selected-count">0/5</span>
+        </h3>
+        <div class="grid grid-cols-5 gap-1 mb-2.5 font-mono text-[9.5px]">
+          <button onclick="switchCategory('chassis')" id="tab-chassis" class="py-1.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-300 font-bold">Chasis</button>
+          <button onclick="switchCategory('propulsion')" id="tab-propulsion" class="py-1.5 rounded bg-slate-800/70 border border-slate-700 text-slate-400">Motor</button>
+          <button onclick="switchCategory('power')" id="tab-power" class="py-1.5 rounded bg-slate-800/70 border border-slate-700 text-slate-400">Energía</button>
+          <button onclick="switchCategory('payload')" id="tab-payload" class="py-1.5 rounded bg-slate-800/70 border border-slate-700 text-slate-400">Equipo</button>
+          <button onclick="switchCategory('launcher')" id="tab-launcher" class="py-1.5 rounded bg-slate-800/70 border border-slate-700 text-slate-400">Lanzador</button>
+        </div>
+        <div id="component-list-container" class="flex-1 overflow-y-auto space-y-2 pr-1"></div>
+      </div>
+    </div>
+
+    <div class="pointer-events-auto w-full max-w-[1500px] mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 panel rounded-xl p-2.5">
+      <button onclick="returnToPhase1()" class="px-3 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-[10px] flex items-center justify-center gap-2"><i class="fa-solid fa-arrow-left"></i>Cambiar destino</button>
+      <div class="text-center font-mono text-[10px] hidden md:block text-slate-500" id="launch-hint">Completa los 5 módulos para autorizar el lanzamiento.</div>
+      <button onclick="launchSimulation()" id="launch-btn" class="px-5 py-2.5 rounded-lg btn-tech font-orbitron font-extrabold text-xs text-cyan-300 uppercase tracking-wider flex items-center justify-center gap-2">
+        <span>INICIAR LANZAMIENTO</span><i class="fa-solid fa-rocket"></i>
+      </button>
+    </div>
+  </section>
+
+  <!-- ================= FASE 3 ================= -->
+  <section id="phase-3-ui" class="hidden absolute inset-0 z-20 flex flex-col justify-between p-4 md:p-6 pointer-events-none">
+    <div class="pointer-events-auto max-w-5xl mx-auto w-full panel rounded-xl p-3 md:p-4 flex flex-wrap justify-between items-center gap-3 font-mono">
+      <div>
+        <span class="text-[9px] text-slate-500 block tracking-widest">ESTADO DE VUELO</span>
+        <span id="sim-status" class="font-orbitron text-sm md:text-base font-bold text-cyan-400">DESPEGANDO</span>
+      </div>
+      <div>
+        <span class="text-[9px] text-slate-500 block tracking-widest">DISTANCIA</span>
+        <span id="sim-distance" class="font-orbitron text-sm md:text-base font-bold text-white">0 km</span>
+      </div>
+      <div>
+        <span class="text-[9px] text-slate-500 block tracking-widest">INTEGRIDAD</span>
+        <span id="sim-health" class="font-orbitron text-sm md:text-base font-bold text-emerald-400">100%</span>
+      </div>
+      <div>
+        <span class="text-[9px] text-slate-500 block tracking-widest">AMENAZA</span>
+        <span id="sim-threat" class="font-orbitron text-sm font-bold text-emerald-400">BAJA</span>
+      </div>
+      <div id="iot-telemetry">
+        <span class="text-[9px] text-slate-500 block tracking-widest">ESTACIÓN TERRENA</span>
+        <span class="font-orbitron text-xs font-bold text-amber-300"><i class="fa-solid fa-tower-broadcast text-emerald-400 animate-pulse"></i> <span id="iot-temp">--</span> · <span id="iot-signal">--</span> · <span id="iot-volt">--</span></span>
+      </div>
+    </div>
+
+    <div class="flex-1 grid place-items-center w-full overflow-hidden">
+      <!-- ANOMALÍA / DECISIÓN -->
+      <div id="sim-event-modal" class="hidden pointer-events-auto max-w-xl w-full panel hud-corners rounded-xl p-5 md:p-6 pop-in" style="border-color:rgba(245,158,11,.7);box-shadow:0 0 50px rgba(245,158,11,.22)">
+        <div class="flex items-center gap-3 mb-2 text-amber-400 font-orbitron font-bold text-base md:text-lg">
+          <i class="fa-solid fa-triangle-exclamation text-xl animate-bounce"></i><span id="event-title">ANOMALÍA</span>
+        </div>
+        <p id="event-desc" class="text-slate-300 text-xs font-mono leading-relaxed mb-4"></p>
+        <div id="event-nasa" class="hidden mb-3 text-[10px] font-mono text-slate-300 bg-[#04101a] border border-cyan-800/50 rounded p-2 leading-relaxed"></div>
+        <div id="event-hint" class="hidden mb-4 text-[10px] font-mono text-cyan-300 bg-cyan-950/50 border border-cyan-500/30 rounded p-2 leading-relaxed"></div>
+        <div id="event-options" class="space-y-2"></div>
+        <div class="mt-3">
+          <div class="flex justify-between text-[9px] font-mono text-slate-500 mb-1"><span>TIEMPO DE RESPUESTA</span><span id="event-timer-label">12s</span></div>
+          <div class="track"><div id="event-timer-bar" class="fill" style="width:100%;background:#f59e0b"></div></div>
+        </div>
+      </div>
+
+      <!-- ALERTA ENTRANTE (lo que viene después de decidir) -->
+      <div id="alert-overlay" class="hidden pointer-events-auto absolute inset-0 bg-[#120406]/88 backdrop-blur-sm grid place-items-center p-5">
+        <div class="alert-scan"></div>
+        <div class="text-center max-w-md w-full pop-in relative">
+          <p class="font-mono text-[10px] tracking-mega text-red-400 mb-2 flex items-center justify-center gap-2"><i class="fa-solid fa-tower-broadcast blink"></i>ALERTA DE PROXIMIDAD</p>
+          <h3 id="alert-title" class="font-orbitron font-extrabold text-xl md:text-2xl text-white mb-1 leading-tight">¡ALGO SE APROXIMA!</h3>
+          <p id="alert-sub" class="text-red-200/90 font-mono text-[11px] mb-5"></p>
+          <div class="countdown-ring mx-auto mb-4 pulse-red">
+            <span id="alert-count" class="font-orbitron font-black text-4xl text-red-400">3</span>
+          </div>
+          <div class="panel rounded-lg p-3 text-left">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[9px] font-mono text-slate-500 tracking-widest">NIVEL DE RIESGO</span>
+              <span id="alert-risk" class="risk-chip text-[10px] px-2 py-0.5 rounded border">MEDIO</span>
+            </div>
+            <div class="track thick"><div id="alert-risk-bar" class="fill" style="width:50%;background:#f59e0b"></div></div>
+            <p id="alert-detail" class="text-[10px] font-mono text-slate-400 mt-2 leading-relaxed"></p>
+            <p id="alert-nasa" class="text-[10px] font-mono text-cyan-300/90 mt-2 pt-2 border-t border-slate-800 leading-relaxed"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULTADO DE LA MANIOBRA -->
+      <div id="outcome-overlay" class="hidden pointer-events-auto absolute inset-0 bg-[#030712]/90 backdrop-blur-sm grid place-items-center p-5">
+        <div class="panel hud-corners rounded-xl p-6 max-w-md w-full text-center pop-in" id="outcome-box">
+          <div id="outcome-icon" class="w-16 h-16 mx-auto rounded-full grid place-items-center text-2xl mb-3 border"></div>
+          <h3 id="outcome-title" class="font-orbitron font-extrabold text-xl mb-1">EVASIÓN LOGRADA</h3>
+          <p id="outcome-text" class="text-xs font-mono text-slate-300 leading-relaxed mb-4"></p>
+          <div id="outcome-tools" class="text-left text-[10px] font-mono space-y-1 mb-4"></div>
+          <button onclick="closeOutcome()" class="w-full py-2.5 rounded-lg btn-tech font-orbitron text-xs font-bold text-cyan-300 uppercase tracking-wider">Continuar trayectoria</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pointer-events-auto max-w-5xl mx-auto w-full panel rounded-xl p-3">
+      <div class="flex justify-between text-[10px] font-mono text-slate-500 mb-1.5">
+        <span>TIERRA</span><span id="sim-phase-label" class="text-cyan-400">ASCENSO</span><span id="sim-target-label">Destino</span>
+      </div>
+      <div class="track thick p-0.5" style="height:12px"><div id="sim-progress-bar" class="fill" style="width:0;background:linear-gradient(90deg,#06b6d4,#22c55e)"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= FASE 4 ================= -->
+  <section id="phase-4-ui" class="hidden absolute inset-0 z-20 flex flex-col justify-center items-center p-4 md:p-6 bg-[#030712]/92 backdrop-blur-xl overflow-y-auto">
+    <div class="panel hud-corners max-w-3xl w-full rounded-2xl p-5 md:p-8 text-center my-auto">
+      <div id="debrief-icon-container" class="w-20 h-20 mx-auto mb-3 rounded-full grid place-items-center text-3xl border-2">
+        <i class="fa-solid fa-award"></i>
+      </div>
+      <span id="debrief-badge-label" class="text-[10px] font-mono tracking-mega block uppercase mb-1 text-cyan-400">EVALUACIÓN MISIONAL</span>
+      <h2 id="debrief-title" class="font-orbitron font-extrabold text-2xl md:text-4xl text-white mb-2">MISIÓN EXITOSA</h2>
+      <p id="debrief-subtitle" class="text-slate-300 font-mono text-[11px] md:text-xs max-w-xl mx-auto mb-5"></p>
+
+      <div class="grid grid-cols-3 gap-2 max-w-md mx-auto mb-4 font-mono text-[10px]">
+        <div class="bg-[#050a12] p-2.5 rounded-lg border border-slate-800"><span class="text-slate-500 block mb-1">PUNTUACIÓN</span><span id="debrief-score" class="font-orbitron font-bold text-lg text-cyan-400">0/100</span></div>
+        <div class="bg-[#050a12] p-2.5 rounded-lg border border-slate-800"><span class="text-slate-500 block mb-1">EFICIENCIA</span><span id="debrief-eff" class="font-orbitron font-bold text-lg text-emerald-400">0%</span></div>
+        <div class="bg-[#050a12] p-2.5 rounded-lg border border-slate-800"><span class="text-slate-500 block mb-1">CIENCIA</span><span id="debrief-science" class="font-orbitron font-bold text-lg text-purple-400">0 pts</span></div>
+      </div>
+
+      <div class="bg-[#050a12]/90 border border-slate-800 rounded-lg p-3 text-left font-mono text-[10px] text-slate-300 mb-4 space-y-1.5 max-h-52 overflow-y-auto" id="debrief-log"></div>
+      <button onclick="restartGame()" class="px-7 py-3 rounded-xl btn-tech font-orbitron font-extrabold text-xs text-cyan-300 uppercase tracking-wider">Diseñar otra misión</button>
+    </div>
+  </section>
+  <!-- ================= PANEL PREDICCIÓN NASA ================= -->
+  <div id="nasa-modal" class="hidden absolute inset-0 z-[70] bg-[#030712]/95 backdrop-blur-md p-4 md:p-6 overflow-y-auto">
+    <div class="panel hud-corners max-w-4xl mx-auto rounded-xl p-5 md:p-6 my-2">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <span class="text-[10px] font-mono text-cyan-400 tracking-mega block uppercase">Datos públicos verificados</span>
+          <h3 class="font-orbitron font-extrabold text-xl md:text-2xl text-white">PREDICCIÓN NASA</h3>
+          <p class="text-[11px] font-mono text-slate-400 mt-1">Escenarios de anomalía construidos con cifras publicadas por NASA / JPL / CNEOS.</p>
+        </div>
+        <button onclick="closeNasaPrediction()" class="px-3 py-1.5 rounded border border-slate-700 hover:border-cyan-500 text-slate-400 hover:text-cyan-300 text-xs font-mono"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="nasa-model-box" class="mb-4"></div>
+      <div id="nasa-scenarios" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
+      <div class="border-t border-slate-800 pt-3">
+        <span class="text-[10px] font-mono text-slate-500 tracking-widest block mb-2">FUENTES</span>
+        <div id="nasa-sources" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+/* ================================================================== */
+/* ASTRACRAFT 2.1 — NÚCLEO DE DATOS                                    */
+/* ================================================================== */
+
+const DESTINATIONS = {
+  moon: {
+    id:'moon', name:'LUNA', title:'Base Polo Sur', sub:'Cráter Shackleton',
+    budget:600, maxMass:2500, solarEff:1.0, reqPower:300, reqDeltaV:6.0, reqComm:0,
+    risk:2, distKm:384400, accent:'emerald', hex:0x22d3ee,
+    brief:'Investigación de depósitos de hielo de agua en sombras permanentes. Tránsito corto y energía solar estable.',
+    env:'VACÍO LUNAR · REGOLITO',
+    sky:0x060c18, fog:0.020,
+    mission:'Mapeo de hielo subsuperficial'
+  },
+  mars: {
+    id:'mars', name:'MARTE', title:'Cráter Jezero', sub:'Lecho marino antiguo',
+    budget:1500, maxMass:4800, solarEff:0.45, reqPower:600, reqDeltaV:8.5, reqComm:300,
+    risk:3, distKm:225000000, accent:'amber', hex:0xf59e0b,
+    brief:'Búsqueda de bio-firmas fósiles. Las tormentas de polvo reducen la captación solar de forma severa.',
+    env:'ATMÓSFERA MARCIANA · POLVO',
+    sky:0x160a04, fog:0.028,
+    mission:'Búsqueda de bio-firmas fósiles'
+  },
+  europa: {
+    id:'europa', name:'EUROPA', title:'Sonda de Océano', sub:'Luna joviana',
+    budget:2800, maxMass:6200, solarEff:0.0, reqPower:900, reqDeltaV:10.5, reqComm:500,
+    risk:5, distKm:628000000, accent:'purple', hex:0xa855f7,
+    brief:'Penetración de la corteza de hielo bajo radiación joviana extrema. Sin luz solar útil: requiere RTG nuclear.',
+    env:'CINTURÓN DE RADIACIÓN JOVIANO',
+    sky:0x0b0820, fog:0.034,
+    mission:'Perforación de corteza de hielo'
+  }
+};
+
+const COMPONENTS = {
+  chassis: [
+    { id:'bus_cube', name:'Chasis CubeSat Estándar', mass:300, cost:40, shield:10, type:'cube',
+      desc:'Estructura compacta de aluminio espacial. Económica pero de baja durabilidad.' },
+    { id:'bus_cylinder', name:'Autobús Cilíndrico MLI Dorado', mass:650, cost:120, shield:35, type:'cylinder',
+      desc:'Estructura cilíndrica recubierta de Mylar dorado termorresistente.' },
+    { id:'bus_heavy', name:'Chasis Blindado Espacio Profundo', mass:1200, cost:280, shield:75, type:'heavy',
+      desc:'Placas de titanio y polietileno boreado para cinturones de radiación extrema.' }
+  ],
+  propulsion: [
+    { id:'prop_rcs', name:'Propulsión de Gas Frío RCS', mass:200, cost:50, thrust:120, dv:1.0, type:'rcs',
+      desc:'Propulsores de posicionamiento rápido para maniobras orbitales finas.' },
+    { id:'prop_biprop', name:'Cohete Bipropelente Líquido', mass:550, cost:150, thrust:450, dv:3.0, type:'rocket',
+      desc:'Motor principal bipropelente con tobera cardánica de alta aceleración.' },
+    { id:'prop_ion', name:'Propulsor de Iones de Xenón', mass:400, cost:260, thrust:280, dv:2.5, type:'ion',
+      desc:'Eficiencia ultra alta para trayectorias interplanetarias de largo alcance.' }
+  ],
+  power: [
+    { id:'pow_solar_small', name:'Paneles Solares Plegables 2x', mass:150, cost:40, power:420, type:'solar_small',
+      desc:'Arreglo de células fotovoltaicas azules articuladas.' },
+    { id:'pow_solar_large', name:'Arreglo Solar Articulado 4x', mass:320, cost:110, power:950, type:'solar_large',
+      desc:'Cuatro alas fotovoltaicas desplegables con seguimiento solar.' },
+    { id:'pow_rtg', name:'Generador RTG Nuclear', mass:500, cost:350, power:980, isNuclear:true, type:'rtg',
+      desc:'Termoeléctrico de radioisótopos. Funciona con 0% de luz solar.' }
+  ],
+  payload: [
+    { id:'pay_cam', name:'Cámara Óptica Multiespectral', mass:80, cost:60, science:130, comm:100, type:'camera',
+      desc:'Lentes de alta resolución para mapas topográficos 3D.' },
+    { id:'pay_dish', name:'Antena Parabólica de Alta Ganancia', mass:180, cost:130, science:240, comm:520, type:'dish',
+      desc:'Plato reflector de malla para transmisión de datos a superdistancias.' },
+    { id:'pay_drill', name:'Brazo Robótico con Taladro Criogénico', mass:350, cost:240, science:400, comm:90, type:'drill',
+      desc:'Herramienta articulada con muestreador y espectrómetro de masas.' },
+    { id:'pay_radar', name:'Radar de Penetración de Hielo', mass:260, cost:210, science:460, comm:60, type:'radar',
+      desc:'Sonda de radiofrecuencia que cartografía océanos bajo kilómetros de hielo.' }
+  ],
+  launcher: [
+    { id:'lnch_sonda', name:'Lanzador Ligero "Sonda-B"', mass:450, cost:60, dv:4.0, capacity:2500, type:'sonda',
+      desc:'Lanzador pequeño y económico. Solo eleva cargas de hasta 2,500 kg.' },
+    { id:'lnch_falcon', name:'Lanzador Reutilizable Media Carga', mass:800, cost:140, dv:6.0, capacity:4800, type:'falcon',
+      desc:'Primera etapa reutilizable con aterrizaje propulsado. Equilibrio coste/capacidad.' },
+    { id:'lnch_heavy', name:'Súper-Pesado de Espacio Profundo', mass:1400, cost:300, dv:8.0, capacity:6500, type:'heavy',
+      desc:'Tres núcleos en paralelo. Capacidad extrema para trayectorias interplanetarias.' }
+  ]
+};
+
+/* ================================================================== */
+/* DATOS REALES DE NASA (verificados en fuentes públicas citadas)      */
+/* ================================================================== */
+const NASA_SOURCES = [
+  {
+    tag:'CNEOS · Sentry', route:'Predicción de impacto',
+    title:'2024 YR4: escala Torino 3',
+    text:'Asteroide de 40–90 m con más de 1% de probabilidad de impacto el 22 de diciembre de 2032 (es decir, ~99% de que NO impacte). Entraría a ~17 km/s. La probabilidad se recalcula con cada nueva observación.',
+    url:'https://cneos.jpl.nasa.gov/news/news210.html'
+  },
+  {
+    tag:'NASA HVIT · MMOD', route:'Micrometeoroides y escombros',
+    title:'Escudo Whipple y velocidades reales',
+    text:'Bumper + separación + pared trasera: el escudo fragmenta el proyectil y dispersa el debris. Escombros orbitales hasta 16 km/s (media 9–10 km/s en la ISS); meteoroides de 11 a 72 km/s (media 22–23 km/s). Regla práctica: a 7 km/s una esfera de aluminio atraviesa una placa de 4× su diámetro.',
+    url:'https://ntrs.nasa.gov/api/citations/20190001193/downloads/20190001193.pdf'
+  },
+  {
+    tag:'NASA · DART', route:'Deflexión de asteroides',
+    title:'Impacto cinético ya probado',
+    text:'DART golpeó Dimorphos a 22.530 km/h y cambió su período orbital en 32 minutos (11 h 55 min → 11 h 23 min). El umbral de éxito era de 73 s: se superó más de 25 veces.',
+    url:'https://www.nasa.gov/news-release/nasa-confirms-dart-mission-impact-changed-asteroids-motion-in-space/'
+  },
+  {
+    tag:'NASA Earthdata', route:'Meteorología espacial',
+    title:'Tormentas solares y fallos a bordo',
+    text:'Las partículas energéticas provocan single-event upsets (bits que cambian de 0 a 1) y obligan al modo seguro. En mayo de 2024 ICESat-2 entró en modo seguro y algunas órbitas bajaron entre 400 y 600 m.',
+    url:'https://www.earthdata.nasa.gov/news/feature-articles/its-always-sunny-space-thats-problem-satellite-teams'
+  },
+  {
+    tag:'NASA/JPL', route:'Tormenta de polvo marciana',
+    title:'Opportunity, 2018: tau 10,8',
+    text:'La tormenta cubrió 35 millones de km² (un cuarto del planeta). Opacidad tau 10,8, temperatura de −29 °C y baterías por debajo de 24 V: la nave entró en modo de fallo por baja potencia.',
+    url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/'
+  },
+  {
+    tag:'NASA Science', route:'Europa y el océano interno',
+    title:'Océano bajo el hielo',
+    text:'Bajo la corteza helada de Europa hay un océano salado con el doble del agua de los océanos terrestres. Europa Clipper se lanzó el 14 de octubre de 2024 para estudiarlo.',
+    url:'https://science.nasa.gov/jupiter/moons/europa/'
+  },
+  {
+    tag:'NASA Science', route:'Regolito lunar',
+    title:'Polvo lunar abrasivo',
+    text:'La superficie lunar es un polvo fino que supone un reto real para exploradores humanos y robóticos: se adhiere a todo y abrasa juntas y ópticas.',
+    url:'https://science.nasa.gov/moon/'
+  }
+];
+
+const CATEGORY_LABEL = { chassis:'Chasis', propulsion:'Propulsión', power:'Energía', payload:'Equipo científico', launcher:'Lanzador' };
+
+const state = {
+  phase: 1,
+  destination: null,
+  difficulty: 'intermediate',
+  audioEnabled: true,
+  activeCategory: 'chassis',
+  simHealth: 100,
+  integrity: 100,
+  danger: 0,
+  selection: { chassis:null, propulsion:null, power:null, payload:null, launcher:null },
+  stats: { mass:0, budget:0, power:0, science:0, shield:0, thrust:0, deltaV:0, comm:0, capacity:0 },
+  decision: null,
+  outcome: null,
+  missionLost: false,
+  impacts: [],
+  _seq: null,
+  _preImpactIntegrity: null,
+  timers: []
+};
+
+/* ============================ UTILIDADES ============================ */
+const $ = (id) => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function clearTimers(){ state.timers.forEach(t => clearTimeout(t)); state.timers = []; }
+function later(fn, ms){ const t = setTimeout(fn, ms); state.timers.push(t); return t; }
+
+function fmtNum(n){ return Number(n).toLocaleString('es-ES'); }
+
+/* ============================ AUDIO ============================ */
+let audioCtx = null;
+function initAudio(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function tone(freq, dur, type, vol, slideTo){
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  g.gain.setValueAtTime(vol || 0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+function noise(dur, f0, f1, vol){
+  const t = audioCtx.currentTime;
+  const len = Math.floor(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const flt = audioCtx.createBiquadFilter(); flt.type = 'lowpass';
+  flt.frequency.setValueAtTime(f0, t);
+  flt.frequency.linearRampToValueAtTime(f1, t + dur);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol || 0.18, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+}
+
+function playSound(type){
+  if(!state.audioEnabled) return;
+  try{
+    initAudio();
+    if(!audioCtx) return;
+    if(type === 'click'){ tone(880, 0.06, 'sine', 0.08, 480); }
+    else if(type === 'dock'){ tone(150, 0.16, 'triangle', 0.22, 52); }
+    else if(type === 'launch'){ noise(1.6, 120, 900, 0.3); tone(70, 1.2, 'sawtooth', 0.1, 40); }
+    else if(type === 'error'){ tone(160, 0.22, 'square', 0.14, 90); }
+    else if(type === 'alert'){ tone(520, 0.16, 'square', 0.12); setTimeout(()=>{ if(state.audioEnabled && audioCtx) tone(700, 0.16, 'square', 0.12); }, 200); }
+    else if(type === 'success'){ tone(520, 0.12, 'sine', 0.12); setTimeout(()=>{ if(state.audioEnabled && audioCtx) tone(780, 0.22, 'sine', 0.12); }, 130); }
+    else if(type === 'fail'){ tone(220, 0.35, 'sawtooth', 0.16, 70); }
+    else if(type === 'beep'){ tone(1200, 0.05, 'square', 0.05); }
+    else if(type === 'impact'){ noise(0.45, 320, 60, 0.32); tone(58, 0.42, 'sawtooth', 0.20, 32); }
+  }catch(e){ /* audio bloqueado */ }
+}
+
+$('toggle-audio-btn').addEventListener('click', () => {
+  state.audioEnabled = !state.audioEnabled;
+  const icon = $('audio-icon'), label = $('audio-label');
+  if(state.audioEnabled){
+    icon.className = 'fa-solid fa-volume-high text-cyan-400';
+    label.innerText = 'SONIDO: ON';
+    playSound('click');
+  }else{
+    icon.className = 'fa-solid fa-volume-xmark text-slate-500';
+    label.innerText = 'SONIDO: OFF';
+  }
+});
+
+/* ============================ TOAST ============================ */
+let toastTimer = null;
+function showNotification(msg, kind){
+  const toast = $('notification-toast');
+  $('notification-text').innerText = msg;
+  toast.classList.remove('hidden');
+  toast.classList.add('flex');
+  toast.className = toast.className.replace(/border-\S+|bg-\S+-\S+\/95/g,'');
+  toast.classList.add(kind === 'ok' ? 'border-emerald-500' : 'border-red-500');
+  toast.classList.add(kind === 'ok' ? 'bg-emerald-950/95' : 'bg-red-950/95');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 3600);
+  playSound(kind === 'ok' ? 'success' : 'error');
+}
+
+/* ====================== TARJETAS DE DESTINO ====================== */
+function riskBar(n, color){
+  let out = '<div class="flex gap-1 mt-2">';
+  for(let i=1;i<=5;i++){
+    out += '<span class="h-1 flex-1 rounded" style="background:' + (i<=n ? color : '#1e293b') + '"></span>';
+  }
+  return out + '</div>';
+}
+
+function renderDestinations(){
+  const meta = {
+    moon:   { chip:' bg-emerald-950 border-emerald-500/50 text-emerald-400', bar:'#10b981', hover:'hover:border-emerald-400/80', icon:'fa-moon', glow:'rgba(16,185,129,.22)', tag:'RIESGO BAJO' },
+    mars:   { chip:' bg-amber-950 border-amber-500/50 text-amber-400', bar:'#f59e0b', hover:'hover:border-amber-400/80', icon:'fa-planet-ringed', glow:'rgba(245,158,11,.22)', tag:'RIESGO MEDIO' },
+    europa: { chip:' bg-purple-950 border-purple-500/50 text-purple-400', bar:'#a855f7', hover:'hover:border-purple-400/80', icon:'fa-snowflake', glow:'rgba(168,85,247,.22)', tag:'RIESGO EXTREMO' }
+  };
+  $('dest-grid').innerHTML = Object.values(DESTINATIONS).map(d => {
+    const m = meta[d.id];
+    return `
+    <div onclick="selectDestination('${d.id}')" class="dest-card group relative rounded-xl bg-[#0a1220]/85 border border-slate-700/80 ${m.hover} p-5 flex flex-col justify-between backdrop-blur-md overflow-hidden">
+      <div class="dest-glow absolute inset-0 pointer-events-none" style="background:radial-gradient(circle at 70% 0%, ${m.glow}, transparent 65%)"></div>
+      <div class="relative">
+        <div class="flex justify-between items-start mb-3">
+          <span class="risk-chip px-2 py-1 rounded border ${m.chip} text-[9px] font-semibold">${m.tag}</span>
+          <i class="fa-solid ${m.icon} text-2xl text-slate-500 group-hover:text-white transition"></i>
+        </div>
+        <h3 class="font-orbitron font-extrabold text-xl text-white mb-0.5">${d.name}</h3>
+        <p class="text-[10px] font-mono text-cyan-400 mb-3 tracking-wide">${d.title} · ${d.sub}</p>
+        <p class="text-slate-400 text-[11px] leading-relaxed mb-4">${d.brief}</p>
+      </div>
+      <div class="relative font-mono text-[10px] border-t border-slate-800 pt-3 space-y-1.5">
+        <div class="flex justify-between"><span class="text-slate-500">Presupuesto</span><span class="text-emerald-400 font-bold">$${fmtNum(d.budget)}M</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Masa máx.</span><span class="text-slate-200">${fmtNum(d.maxMass)} kg</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Solar útil</span><span class="${d.solarEff===0?'text-purple-400':'text-cyan-400'}">${Math.round(d.solarEff*100)}%</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Δv requerido</span><span class="text-indigo-300">${d.reqDeltaV.toFixed(1)} km/s</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Enlace mínimo</span><span class="text-slate-300">${d.reqComm} pts</span></div>
+        <div class="pt-1">
+          <span class="text-slate-500">Amenaza ambiental</span>
+          ${riskBar(d.risk, m.bar)}
+        </div>
+        <button class="w-full mt-3 py-2 rounded btn-tech text-cyan-300 font-orbitron text-[10px] font-bold tracking-wider uppercase">Seleccionar misión</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================ DIFICULTAD ============================ */
+function setDifficulty(level){
+  state.difficulty = level;
+  playSound('dock');
+  $('difficulty-modal').classList.add('hidden');
+  const badge = $('diff-badge');
+  badge.classList.remove('hidden');
+  badge.classList.add('flex');
+  badge.innerHTML = level === 'junior'
+    ? '<i class="fa-solid fa-seedling text-emerald-400"></i><span class="text-emerald-300">JUVENIL</span>'
+    : '<i class="fa-solid fa-user-astronaut text-cyan-400"></i><span class="text-cyan-300">INTERMEDIO</span>';
+  startExperience();
+}
+</script>
+<script>
+/* ================================================================== */
+/* MOTOR 3D — ESCENA, AMBIENTE PELIGROSO Y NAVE PROCEDURAL             */
+/* ================================================================== */
+let scene, camera, renderer, controls, clock;
+let shipGroup, activeMeshes = { chassis:null, propulsion:null, power:null, payload:null, launcher:null };
+let autoRotate = true;
+let starField = null, dustField = null, bodyMesh = null, atmoMesh = null, beltGroup = null;
+let sunLight = null, dangerLight = null, rimLightA = null, rimLightB = null, engineFlames = [];
+let stageCradle = null, impactGroup = null, lastAnimT = 0;
+let platformTopY = -4.41;   // superficie útil de la plataforma
+let shipGroundY = 0;        // altura base de la nave en la plataforma
+let sceneReady = false;
+
+const MAT = {};
+function buildMaterials(){
+  MAT.hull      = new THREE.MeshStandardMaterial({ color:0xdfe6ee, metalness:0.55, roughness:0.42 });
+  MAT.goldMLI   = new THREE.MeshStandardMaterial({ color:0xd8b04a, metalness:0.95, roughness:0.22 });
+  MAT.silver    = new THREE.MeshStandardMaterial({ color:0xb9c2cc, metalness:0.9,  roughness:0.25 });
+  MAT.titanium  = new THREE.MeshStandardMaterial({ color:0x2a2f38, metalness:0.72, roughness:0.52 });
+  MAT.dark      = new THREE.MeshStandardMaterial({ color:0x14181f, metalness:0.6,  roughness:0.6 });
+  MAT.solar     = new THREE.MeshStandardMaterial({ color:0x0b3b6e, metalness:0.65, roughness:0.15, emissive:0x0a2a52, emissiveIntensity:0.5 });
+  MAT.solarFrame= new THREE.MeshStandardMaterial({ color:0x8a949f, metalness:0.85, roughness:0.35 });
+  MAT.nozzle    = new THREE.MeshStandardMaterial({ color:0x1b1e24, metalness:0.95, roughness:0.18, side:THREE.DoubleSide });
+  MAT.glowCyan  = new THREE.MeshBasicMaterial({ color:0x22d3ee });
+  MAT.glowBlue  = new THREE.MeshBasicMaterial({ color:0x60a5fa });
+  MAT.glowAmber = new THREE.MeshBasicMaterial({ color:0xfbbf24 });
+  MAT.radiator  = new THREE.MeshStandardMaterial({ color:0xe8edf2, metalness:0.4, roughness:0.55 });
+  MAT.copper    = new THREE.MeshStandardMaterial({ color:0xb87333, metalness:0.9, roughness:0.3 });
+}
+
+function initThreeJS(){
+  if(sceneReady){ return; }
+  const container = $('canvas-container');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x030712);
+  scene.fog = new THREE.FogExp2(0x030712, 0.022);
+  clock = new THREE.Clock();
+
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 3000);
+  camera.position.set(6.5, 4.2, 9);
+
+  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+  renderer.setSize(window.innerWidth, Math.max(1, window.innerHeight));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.minDistance = 3;
+  controls.maxDistance = 28;
+  controls.target.set(0, 0, 0);
+  controls.autoRotate = false;
+
+  scene.add(new THREE.AmbientLight(0x93a4bb, 0.55));
+
+  sunLight = new THREE.DirectionalLight(0xfff4e0, 1.15);
+  sunLight.position.set(12, 16, 9);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width = 1024;
+  sunLight.shadow.mapSize.height = 1024;
+  scene.add(sunLight);
+
+  rimLightA = new THREE.PointLight(0x22d3ee, 2.2, 26);
+  rimLightA.position.set(-7, -3, -6);
+  scene.add(rimLightA);
+
+  rimLightB = new THREE.PointLight(0xa855f7, 1.4, 26);
+  rimLightB.position.set(7, 6, -7);
+  scene.add(rimLightB);
+
+  // Luz de peligro: se intensifica con la amenaza ambiental
+  dangerLight = new THREE.PointLight(0xff2d2d, 0, 30);
+  dangerLight.position.set(0, 0.5, 4);
+  scene.add(dangerLight);
+
+  buildMaterials();
+  buildStarField();
+  buildStage();
+  buildShipBase();
+
+  window.addEventListener('resize', onWindowResize);
+  sceneReady = true;
+  animate();
+}
+
+/* ---------------- Campo estelar y polvo ---------------- */
+function buildStarField(){
+  const N = 1400;
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  for(let i=0;i<N;i++){
+    const r = 220 + Math.random()*520;
+    const th = Math.random()*Math.PI*2;
+    const ph = Math.acos(Math.random()*2-1);
+    pos[i*3]   = r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1] = r*Math.cos(ph);
+    pos[i*3+2] = r*Math.sin(ph)*Math.sin(th);
+    const t = Math.random();
+    col[i*3] = 0.72 + t*0.28;
+    col[i*3+1] = 0.8 + t*0.2;
+    col[i*3+2] = 1.0;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  starField = new THREE.Points(g, new THREE.PointsMaterial({ size:2.2, sizeAttenuation:false, vertexColors:true, transparent:true, opacity:0.9 }));
+  scene.add(starField);
+
+  const M = 320;
+  const dp = new Float32Array(M * 3);
+  for(let i=0;i<M;i++){
+    dp[i*3]   = (Math.random()-0.5)*34;
+    dp[i*3+1] = (Math.random()-0.5)*22;
+    dp[i*3+2] = (Math.random()-0.5)*34;
+  }
+  const dg = new THREE.BufferGeometry();
+  dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+  dustField = new THREE.Points(dg, new THREE.PointsMaterial({ size:0.07, color:0x22d3ee, transparent:true, opacity:0.55 }));
+  scene.add(dustField);
+}
+
+/* ---------------- Cuerpo celeste + plataforma ---------------- */
+function buildStage(){
+  // Plataforma de ensamblaje
+  const plat = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.2, 4.6, 0.28, 48),
+    new THREE.MeshStandardMaterial({ color:0x0d1626, metalness:0.8, roughness:0.45 })
+  );
+  plat.position.y = -4.0;
+  plat.receiveShadow = true;
+  scene.add(plat);
+
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(4.25, 0.05, 8, 64), new THREE.MeshBasicMaterial({ color:0x22d3ee }));
+  ring.rotation.x = Math.PI/2;
+  ring.position.y = -3.83;
+  scene.add(ring);
+
+  const grid = new THREE.GridHelper(26, 26, 0x1e293b, 0x0f1b2b);
+  grid.position.y = -4.28;
+  scene.add(grid);
+
+  // Cuna de ensamblaje: abraza la base del lanzador sin atravesarla
+  const cradle = new THREE.Group();
+  for(let i=0;i<4;i++){
+    const a = (i/4)*Math.PI*2 + Math.PI/4;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.9, 0.16), new THREE.MeshStandardMaterial({ color:0x263445, metalness:0.85, roughness:0.35 }));
+    arm.position.set(Math.cos(a)*1.35, -3.42, Math.sin(a)*1.35);
+    arm.rotation.z = Math.cos(a)*0.16;
+    arm.rotation.x = -Math.sin(a)*0.16;
+    cradle.add(arm);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.12, 16), new THREE.MeshStandardMaterial({ color:0x1b2733, metalness:0.7, roughness:0.5 }));
+    pad.position.set(Math.cos(a)*1.35, -3.88, Math.sin(a)*1.35);
+    cradle.add(pad);
+  }
+  scene.add(cradle);
+  stageCradle = cradle;
+
+  // Cuerpo celeste de fondo
+  bodyMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(14, 64, 64),
+    new THREE.MeshStandardMaterial({ color:0x1a2230, roughness:0.95, metalness:0.05 })
+  );
+  bodyMesh.position.set(-30, -10, -58);
+  scene.add(bodyMesh);
+
+  atmoMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(14.9, 48, 48),
+    new THREE.MeshBasicMaterial({ color:0x22d3ee, transparent:true, opacity:0.08, side:THREE.BackSide })
+  );
+  atmoMesh.position.copy(bodyMesh.position);
+  scene.add(atmoMesh);
+}
+
+/* ---------------- NAVE: base ---------------- */
+function buildShipBase(){
+  shipGroup = new THREE.Group();
+  scene.add(shipGroup);
+}
+
+function clearShip(){
+  Object.keys(activeMeshes).forEach(k => remove3DMesh(k));
+  engineFlames = [];
+  shipGroundY = 0;
+  if(shipGroup) shipGroup.position.y = 0;
+}
+
+/* ---------------- AMBIENTE POR DESTINO ---------------- */
+function applyEnvironment(destKey){
+  const d = DESTINATIONS[destKey];
+  if(!d) return;
+  scene.background.setHex(d.sky);
+  scene.fog.color.setHex(d.sky);
+  scene.fog.density = d.fog;
+  rimLightA.color.setHex(d.hex);
+  bodyMesh.material.color.setHex(d.id === 'mars' ? 0x6b2f14 : d.id === 'europa' ? 0xd8e4f0 : 0x3a3f47);
+  atmoMesh.material.color.setHex(d.hex);
+  atmoMesh.material.opacity = d.id === 'mars' ? 0.18 : 0.1;
+  buildBelts(d.id);
+}
+
+/* Anillos de escombros / partículas ambientales según destino */
+function buildBelts(destKey){
+  if(beltGroup){ scene.remove(beltGroup); beltGroup = null; }
+  beltGroup = new THREE.Group();
+  const count = destKey === 'europa' ? 260 : destKey === 'mars' ? 180 : 90;
+  const geo = new THREE.DodecahedronGeometry(0.09, 0);
+  const mat = new THREE.MeshStandardMaterial({ color: destKey === 'mars' ? 0x8a4a22 : 0x6b7280, roughness:0.9 });
+  for(let i=0;i<count;i++){
+    const m = new THREE.Mesh(geo, mat);
+    const a = Math.random()*Math.PI*2;
+    const r = 7 + Math.random()*9;
+    m.position.set(Math.cos(a)*r, (Math.random()-0.5)*7, Math.sin(a)*r);
+    m.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+    m.userData.spin = (Math.random()-0.5)*0.01;
+    beltGroup.add(m);
+  }
+  scene.add(beltGroup);
+}
+
+/* ================= CONSTRUCTORES DE MÓDULOS 3D ================= */
+
+/* 1. CHASIS */
+function createChassis3D(type){
+  const g = new THREE.Group();
+  if(type === 'cube'){
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.7, 1.5), MAT.hull);
+    body.castShadow = true; g.add(body);
+    // paneles de instrumentos
+    for(let y of [-0.5, 0, 0.5]){
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.28, 0.03), MAT.titanium);
+      p.position.set(0, y, 0.76); g.add(p);
+      const p2 = p.clone(); p2.position.z = -0.76; g.add(p2);
+    }
+    // aristas
+    const strut = new THREE.BoxGeometry(0.09, 1.82, 0.09);
+    for(const x of [-0.76, 0.76]) for(const z of [-0.76, 0.76]){
+      const s = new THREE.Mesh(strut, MAT.silver);
+      s.position.set(x, 0, z); g.add(s);
+    }
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.4, 0.06), MAT.copper);
+    rail.position.set(-0.78, 0, 0.4); g.add(rail);
+  } else if(type === 'cylinder'){
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.0, 32), MAT.goldMLI);
+    body.castShadow = true; g.add(body);
+    for(const y of [0.72, 0, -0.72]){
+      const r = new THREE.Mesh(new THREE.TorusGeometry(0.97, 0.045, 10, 40), MAT.silver);
+      r.rotation.x = Math.PI/2; r.position.y = y; g.add(r);
+    }
+    // paneles laterales de equipos
+    for(const a of [0, Math.PI]){
+      const eq = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.1, 0.16), MAT.titanium);
+      eq.position.set(Math.cos(a)*0.96, 0, Math.sin(a)*0.96);
+      eq.rotation.y = -a; g.add(eq);
+    }
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.95, 0.34, 32), MAT.silver);
+    top.position.y = 1.15; g.add(top);
+  } else {
+    // Blindado de espacio profundo
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 2.2, 8), MAT.titanium);
+    body.castShadow = true; g.add(body);
+    for(let i=0;i<8;i++){
+      const a = (i/8)*Math.PI*2;
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.17), MAT.silver);
+      rib.position.set(Math.cos(a)*1.27, 0, Math.sin(a)*1.27);
+      rib.rotation.y = -a; g.add(rib);
+    }
+    // placas de blindaje extra
+    for(const y of [0.55, -0.55]){
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.33, 1.33, 0.16, 8), MAT.dark);
+      plate.position.y = y; g.add(plate);
+    }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(1.24, 0.52, 8), MAT.silver);
+    cap.position.y = 1.36; g.add(cap);
+    const glowRing = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.035, 8, 40), MAT.glowCyan);
+    glowRing.rotation.x = Math.PI/2; glowRing.position.y = 1.11; g.add(glowRing);
+  }
+  return g;
+}
+
+/* 2. PROPULSIÓN */
+function createPropulsion3D(type){
+  const g = new THREE.Group();
+  if(type === 'rcs'){
+    for(let i=0;i<4;i++){
+      const a = (i/4)*Math.PI*2 + Math.PI/4;
+      const pod = new THREE.Group();
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), MAT.titanium);
+      pod.add(block);
+      for(const s of [-1,1]){
+        const n = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.13, 10), MAT.nozzle);
+        n.rotation.x = Math.PI/2; n.position.set(0, 0, s*0.14); pod.add(n);
+      }
+      pod.position.set(Math.cos(a)*1.05, -0.95, Math.sin(a)*1.05);
+      pod.rotation.y = -a;
+      g.add(pod);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.05, 8, 40), MAT.silver);
+    ring.rotation.x = Math.PI/2; ring.position.y = -0.95; g.add(ring);
+  } else if(type === 'rocket'){
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 0.95, 24, 1, true), MAT.nozzle);
+    bell.position.y = -1.55; g.add(bell);
+    const chamber = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.42, 20), MAT.copper);
+    chamber.position.y = -1.0; g.add(chamber);
+    const gimbal = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.055, 8, 24), MAT.silver);
+    gimbal.rotation.x = Math.PI/2; gimbal.position.y = -0.85; g.add(gimbal);
+    // turbobombas
+    for(const s of [-1,1]){
+      const pump = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 12), MAT.silver);
+      pump.position.set(s*0.34, -0.72, 0); g.add(pump);
+    }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.1, 20, 1, true), new THREE.MeshBasicMaterial({ color:0xffb457, transparent:true, opacity:0.75 }));
+    flame.rotation.x = Math.PI; flame.position.y = -2.15; g.add(flame);
+    engineFlames.push({ mesh:flame, base:1.1, kind:'rocket' });
+  } else {
+    const engine = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.42, 0.85, 24), MAT.titanium);
+    engine.position.y = -1.35; g.add(engine);
+    const grid = new THREE.Mesh(new THREE.CircleGeometry(0.4, 24), MAT.glowBlue);
+    grid.rotation.x = Math.PI/2; grid.position.y = -1.79; g.add(grid);
+    const glow = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.9, 20, 1, true), new THREE.MeshBasicMaterial({ color:0x6cb6ff, transparent:true, opacity:0.55 }));
+    glow.rotation.x = Math.PI; glow.position.y = -2.25; g.add(glow);
+    engineFlames.push({ mesh:glow, base:0.9, kind:'ion' });
+    for(const s of [-1,1]){
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.22), MAT.silver);
+      fin.position.set(s*0.5, -1.2, 0); g.add(fin);
+    }
+  }
+  return g;
+}
+
+/* 3. ENERGÍA */
+function createPower3D(type){
+  const g = new THREE.Group();
+  if(type === 'solar_small' || type === 'solar_large'){
+    const wings = type === 'solar_small' ? 2 : 4;
+    const W = type === 'solar_small' ? 1.5 : 2.5;
+    for(let i=0;i<wings;i++){
+      const a = (i/wings)*Math.PI*2;
+      const wing = new THREE.Group();
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 8), MAT.silver);
+      arm.rotation.z = Math.PI/2; arm.position.x = 0.25; wing.add(arm);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(W, 0.05, 0.82), MAT.solarFrame);
+      frame.position.x = 0.5 + W/2; wing.add(frame);
+      const cells = new THREE.Mesh(new THREE.BoxGeometry(W-0.1, 0.07, 0.72), MAT.solar);
+      cells.position.x = 0.5 + W/2; wing.add(cells);
+      // rejilla de células
+      const lines = Math.max(2, Math.round(W*3));
+      for(let k=1;k<lines;k++){
+        const sep = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.72), MAT.solarFrame);
+        sep.position.set(0.5 + (W/lines)*k, 0.005, 0);
+        wing.add(sep);
+      }
+      wing.rotation.y = a;
+      wing.rotation.z = -0.06;
+      g.add(wing);
+    }
+  } else {
+    const rtg = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.25, 20), MAT.dark);
+    core.rotation.z = Math.PI/2; rtg.add(core);
+    for(let i=0;i<8;i++){
+      const a = (i/8)*Math.PI*2;
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.36, 0.5), MAT.silver);
+      fin.position.set(0, Math.cos(a)*0.44, Math.sin(a)*0.44);
+      fin.rotation.x = -a; rtg.add(fin);
+    }
+    rtg.position.set(0, 0.05, 1.35);
+    g.add(rtg);
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 8), MAT.silver);
+    boom.rotation.x = Math.PI/2; boom.position.set(0, 0.05, 0.75); g.add(boom);
+    const hot = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), MAT.glowAmber);
+    hot.position.set(0, 0.05, 1.98); g.add(hot);
+    engineFlames.push({ mesh:hot, base:0.15, kind:'rtg' });
+  }
+  return g;
+}
+
+/* 4. CARGA ÚTIL */
+/* Altura real del techo del chasis: el instrumental se apoya ahí, no flota */
+function chassisTopY(){
+  const c = state.selection && state.selection.chassis;
+  if(!c) return 0.9;
+  if(c.type === 'cube') return 0.88;
+  if(c.type === 'heavy') return 1.62;
+  return 1.32;   // cilíndrico MLI
+}
+
+function createPayload3D(type){
+  const g = new THREE.Group();
+  g.position.y = chassisTopY();   // un solo desplazamiento: origen = techo del casco
+  return buildPayloadParts(g, type);
+}
+
+function buildPayloadParts(g, type){
+  // Brida de montaje: ancla el instrumento al casco como una pieza real
+  const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.2, 20), MAT.titanium);
+  mount.position.y = 0.03; g.add(mount);
+
+  if(type === 'camera'){
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.42, 0.58), MAT.titanium);
+    box.position.set(0, 0.36, 0); g.add(box);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.4, 20), MAT.silver);
+    barrel.rotation.x = Math.PI/2; barrel.position.set(0, 0.36, 0.4); g.add(barrel);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), MAT.glowCyan);
+    lens.position.set(0, 0.36, 0.61); g.add(lens);
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.15, 20, 1, true), MAT.dark);
+    hood.rotation.x = Math.PI/2; hood.position.set(0, 0.36, 0.48); g.add(hood);
+  } else if(type === 'dish'){
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.14, 20), MAT.titanium);
+    collar.position.y = 0.16; g.add(collar);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 8), MAT.silver);
+    mast.position.y = 0.38; g.add(mast);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.58, 28, 20, 0, Math.PI*2, 0, Math.PI/2.6), new THREE.MeshStandardMaterial({ color:0xd7dee6, metalness:0.85, roughness:0.3, side:THREE.DoubleSide }));
+    dish.rotation.x = Math.PI * 0.62; dish.position.y = 0.62; g.add(dish);
+    const feed = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 8), MAT.goldMLI);
+    feed.rotation.x = -0.5; feed.position.set(0, 0.76, 0.14); g.add(feed);
+    const horn = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), MAT.copper);
+    horn.position.set(0, 0.94, 0.28); g.add(horn);
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), MAT.silver);
+    truss.position.y = 0.22; g.add(truss);
+  } else if(type === 'drill'){
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 14), MAT.copper);
+    shoulder.position.set(0.42, 0.18, 0); g.add(shoulder);
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.78, 12), MAT.silver);
+    upper.position.set(0.72, 0.44, 0); upper.rotation.z = -Math.PI/3.2; g.add(upper);
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), MAT.copper);
+    elbow.position.set(1.04, 0.7, 0); g.add(elbow);
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.62, 12), MAT.silver);
+    fore.position.set(1.2, 0.4, 0); fore.rotation.z = Math.PI/5.5; g.add(fore);
+    const bit = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.38, 10), MAT.titanium);
+    bit.position.set(1.32, 0.12, 0); bit.rotation.z = Math.PI; g.add(bit);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.13, 12), MAT.dark);
+    collar.position.set(1.28, 0.28, 0); g.add(collar);
+  } else {
+    // Radar de penetración
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.22, 0.48), MAT.titanium);
+    base.position.y = 0.2; g.add(base);
+    for(const s of [-1,1]){
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.72, 0.66), MAT.radiator);
+      panel.position.set(s*0.46, 0.48, 0); panel.rotation.z = -s*0.2; g.add(panel);
+    }
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.66, 6), MAT.silver);
+    ant.position.set(0, 0.8, -0.18); g.add(ant);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), MAT.glowAmber);
+    tip.position.set(0, 1.14, -0.18); g.add(tip);
+    engineFlames.push({ mesh:tip, base:0.08, kind:'tip' });
+  }
+  return g;
+}
+
+/* 5. LANZADOR */
+function createLauncher3D(type){
+  const g = new THREE.Group();
+  const boosters = type === 'sonda' ? 0 : (type === 'falcon' ? 2 : 4);
+  const r = type === 'heavy' ? 0.52 : 0.42;
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1.9, 24), MAT.hull);
+  core.position.y = -2.35; core.castShadow = true; g.add(core);
+  // bandas
+  for(const y of [-1.55, -3.1]){
+    const band = new THREE.Mesh(new THREE.TorusGeometry(r*1.01, 0.035, 8, 32), MAT.titanium);
+    band.rotation.x = Math.PI/2; band.position.y = y; g.add(band);
+  }
+  // motores
+  for(const s of [-1, 1]){
+    const bell = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 14), MAT.nozzle);
+    bell.rotation.x = Math.PI; bell.position.set(s*0.17, -3.42, 0); g.add(bell);
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.9, 14, 1, true), new THREE.MeshBasicMaterial({ color:0xff9d4d, transparent:true, opacity:0.6 }));
+    fl.rotation.x = Math.PI; fl.position.set(s*0.17, -4.0, 0); g.add(fl);
+    engineFlames.push({ mesh:fl, base:0.9, kind:'launcher' });
+  }
+  for(let i=0;i<boosters;i++){
+    const a = (i/boosters)*Math.PI*2 + Math.PI/4;
+    const booster = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 1.5, 18), MAT.goldMLI);
+    booster.position.set(Math.cos(a)*0.68, -2.3, Math.sin(a)*0.68); g.add(booster);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.34, 18), MAT.titanium);
+    nose.position.set(Math.cos(a)*0.68, -1.4, Math.sin(a)*0.68); g.add(nose);
+    const bn = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 12), MAT.nozzle);
+    bn.rotation.x = Math.PI; bn.position.set(Math.cos(a)*0.68, -3.14, Math.sin(a)*0.68); g.add(bn);
+  }
+  if(type === 'heavy'){
+    for(const s of [-1,1]){
+      const aux = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.6, 18), MAT.hull);
+      aux.position.set(s*0.72, -2.4, 0); g.add(aux);
+    }
+  }
+  return g;
+}
+
+/* ================= ACOPLADO CON ANIMACIÓN ================= */
+/* Ajusta la nave para que su punto más bajo quede justo sobre la plataforma */
+function shipLowestPoint(){
+  // Recorre la nave ignorando lo que está apagado (llamas) o es decorativo
+  let lowest = Infinity;
+  if(!shipGroup) return lowest;
+  shipGroup.updateMatrixWorld(true);
+  shipGroup.traverse(function(o){
+    if(!o.isMesh || !o.visible) return;
+    if(!o.geometry) return;
+    const m = o.material;
+    if(m && m.transparent && m.opacity !== undefined && m.opacity < 0.9) return; // llamas / destellos
+    if(!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    const bb = o.geometry.boundingBox;
+    if(!bb) return;
+    const corners = [
+      [bb.min.x, bb.min.y, bb.min.z], [bb.min.x, bb.min.y, bb.max.z],
+      [bb.max.x, bb.min.y, bb.min.z], [bb.max.x, bb.min.y, bb.max.z],
+      [bb.min.x, bb.max.y, bb.min.z], [bb.max.x, bb.max.y, bb.max.z]
+    ];
+    for(let i=0;i<corners.length;i++){
+      const v = new THREE.Vector3(corners[i][0], corners[i][1], corners[i][2]);
+      v.applyMatrix4(o.matrixWorld);
+      if(v.y < lowest) lowest = v.y;
+    }
+  });
+  return lowest;
+}
+
+/* Ajusta la nave para que su punto más bajo se apoye en la plataforma (nunca la atraviese) */
+function fitShipToStage(){
+  if(!shipGroup) return;
+  const prev = shipGroup.position.y;
+  shipGroup.position.y = 0;
+  const lowest = shipLowestPoint();
+  if(!isFinite(lowest)){ shipGroup.position.y = prev; return; }
+  // la base del lanzador queda 0.06 por encima de la superficie de la plataforma
+  shipGroundY = platformTopY + 0.06 - lowest;
+  if(!isFinite(shipGroundY)) shipGroundY = 0;
+  shipGroup.position.y = shipGroundY;
+}
+
+/* ================= CONSTRUCTORES DE MÓDULOS 3D ================= */
+
+/* 1. CHASIS */
+function createChassis3D(type){
+  const g = new THREE.Group();
+  if(type === 'cube'){
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.7, 1.5), MAT.hull);
+    body.castShadow = true; g.add(body);
+    // paneles de instrumentos
+    for(let y of [-0.5, 0, 0.5]){
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.28, 0.03), MAT.titanium);
+      p.position.set(0, y, 0.76); g.add(p);
+      const p2 = p.clone(); p2.position.z = -0.76; g.add(p2);
+    }
+    // aristas
+    const strut = new THREE.BoxGeometry(0.09, 1.82, 0.09);
+    for(const x of [-0.76, 0.76]) for(const z of [-0.76, 0.76]){
+      const s = new THREE.Mesh(strut, MAT.silver);
+      s.position.set(x, 0, z); g.add(s);
+    }
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.4, 0.06), MAT.copper);
+    rail.position.set(-0.78, 0, 0.4); g.add(rail);
+  } else if(type === 'cylinder'){
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 2.0, 32), MAT.goldMLI);
+    body.castShadow = true; g.add(body);
+    for(const y of [0.72, 0, -0.72]){
+      const r = new THREE.Mesh(new THREE.TorusGeometry(0.97, 0.045, 10, 40), MAT.silver);
+      r.rotation.x = Math.PI/2; r.position.y = y; g.add(r);
+    }
+    // paneles laterales de equipos
+    for(const a of [0, Math.PI]){
+      const eq = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.1, 0.16), MAT.titanium);
+      eq.position.set(Math.cos(a)*0.96, 0, Math.sin(a)*0.96);
+      eq.rotation.y = -a; g.add(eq);
+    }
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.95, 0.34, 32), MAT.silver);
+    top.position.y = 1.15; g.add(top);
+  } else {
+    // Blindado de espacio profundo
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 2.2, 8), MAT.titanium);
+    body.castShadow = true; g.add(body);
+    for(let i=0;i<8;i++){
+      const a = (i/8)*Math.PI*2;
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.17), MAT.silver);
+      rib.position.set(Math.cos(a)*1.27, 0, Math.sin(a)*1.27);
+      rib.rotation.y = -a; g.add(rib);
+    }
+    // placas de blindaje extra
+    for(const y of [0.55, -0.55]){
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.33, 1.33, 0.16, 8), MAT.dark);
+      plate.position.y = y; g.add(plate);
+    }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(1.24, 0.52, 8), MAT.silver);
+    cap.position.y = 1.36; g.add(cap);
+    const glowRing = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.035, 8, 40), MAT.glowCyan);
+    glowRing.rotation.x = Math.PI/2; glowRing.position.y = 1.11; g.add(glowRing);
+  }
+  return g;
+}
+
+/* 2. PROPULSIÓN */
+function createPropulsion3D(type){
+  const g = new THREE.Group();
+  if(type === 'rcs'){
+    for(let i=0;i<4;i++){
+      const a = (i/4)*Math.PI*2 + Math.PI/4;
+      const pod = new THREE.Group();
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), MAT.titanium);
+      pod.add(block);
+      for(const s of [-1,1]){
+        const n = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.13, 10), MAT.nozzle);
+        n.rotation.x = Math.PI/2; n.position.set(0, 0, s*0.14); pod.add(n);
+      }
+      pod.position.set(Math.cos(a)*1.05, -0.95, Math.sin(a)*1.05);
+      pod.rotation.y = -a;
+      g.add(pod);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.05, 8, 40), MAT.silver);
+    ring.rotation.x = Math.PI/2; ring.position.y = -0.95; g.add(ring);
+  } else if(type === 'rocket'){
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 0.95, 24, 1, true), MAT.nozzle);
+    bell.position.y = -1.55; g.add(bell);
+    const chamber = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.42, 20), MAT.copper);
+    chamber.position.y = -1.0; g.add(chamber);
+    const gimbal = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.055, 8, 24), MAT.silver);
+    gimbal.rotation.x = Math.PI/2; gimbal.position.y = -0.85; g.add(gimbal);
+    // turbobombas
+    for(const s of [-1,1]){
+      const pump = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 12), MAT.silver);
+      pump.position.set(s*0.34, -0.72, 0); g.add(pump);
+    }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.1, 20, 1, true), new THREE.MeshBasicMaterial({ color:0xffb457, transparent:true, opacity:0.75 }));
+    flame.rotation.x = Math.PI; flame.position.y = -2.15; g.add(flame);
+    engineFlames.push({ mesh:flame, base:1.1, kind:'rocket' });
+  } else {
+    const engine = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.42, 0.85, 24), MAT.titanium);
+    engine.position.y = -1.35; g.add(engine);
+    const grid = new THREE.Mesh(new THREE.CircleGeometry(0.4, 24), MAT.glowBlue);
+    grid.rotation.x = Math.PI/2; grid.position.y = -1.79; g.add(grid);
+    const glow = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.9, 20, 1, true), new THREE.MeshBasicMaterial({ color:0x6cb6ff, transparent:true, opacity:0.55 }));
+    glow.rotation.x = Math.PI; glow.position.y = -2.25; g.add(glow);
+    engineFlames.push({ mesh:glow, base:0.9, kind:'ion' });
+    for(const s of [-1,1]){
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.22), MAT.silver);
+      fin.position.set(s*0.5, -1.2, 0); g.add(fin);
+    }
+  }
+  return g;
+}
+
+/* 3. ENERGÍA */
+function createPower3D(type){
+  const g = new THREE.Group();
+  if(type === 'solar_small' || type === 'solar_large'){
+    const wings = type === 'solar_small' ? 2 : 4;
+    const W = type === 'solar_small' ? 1.5 : 2.5;
+    for(let i=0;i<wings;i++){
+      const a = (i/wings)*Math.PI*2;
+      const wing = new THREE.Group();
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 8), MAT.silver);
+      arm.rotation.z = Math.PI/2; arm.position.x = 0.25; wing.add(arm);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(W, 0.05, 0.82), MAT.solarFrame);
+      frame.position.x = 0.5 + W/2; wing.add(frame);
+      const cells = new THREE.Mesh(new THREE.BoxGeometry(W-0.1, 0.07, 0.72), MAT.solar);
+      cells.position.x = 0.5 + W/2; wing.add(cells);
+      // rejilla de células
+      const lines = Math.max(2, Math.round(W*3));
+      for(let k=1;k<lines;k++){
+        const sep = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.08, 0.72), MAT.solarFrame);
+        sep.position.set(0.5 + (W/lines)*k, 0.005, 0);
+        wing.add(sep);
+      }
+      wing.rotation.y = a;
+      wing.rotation.z = -0.06;
+      g.add(wing);
+    }
+  } else {
+    const rtg = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.25, 20), MAT.dark);
+    core.rotation.z = Math.PI/2; rtg.add(core);
+    for(let i=0;i<8;i++){
+      const a = (i/8)*Math.PI*2;
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.36, 0.5), MAT.silver);
+      fin.position.set(0, Math.cos(a)*0.44, Math.sin(a)*0.44);
+      fin.rotation.x = -a; rtg.add(fin);
+    }
+    rtg.position.set(0, 0.05, 1.35);
+    g.add(rtg);
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 8), MAT.silver);
+    boom.rotation.x = Math.PI/2; boom.position.set(0, 0.05, 0.75); g.add(boom);
+    const hot = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), MAT.glowAmber);
+    hot.position.set(0, 0.05, 1.98); g.add(hot);
+    engineFlames.push({ mesh:hot, base:0.15, kind:'rtg' });
+  }
+  return g;
+}
+
+/* 4. CARGA ÚTIL */
+/* Altura real del techo del chasis: el instrumental se apoya ahí, no flota */
+function chassisTopY(){
+  const c = state.selection && state.selection.chassis;
+  if(!c) return 0.9;
+  if(c.type === 'cube') return 0.88;
+  if(c.type === 'heavy') return 1.62;
+  return 1.32;   // cilíndrico MLI
+}
+
+function createPayload3D(type){
+  const g = new THREE.Group();
+  g.position.y = chassisTopY();   // un solo desplazamiento: origen = techo del casco
+  return buildPayloadParts(g, type);
+}
+
+function buildPayloadParts(g, type){
+  // Brida de montaje: ancla el instrumento al casco como una pieza real
+  const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.44, 0.2, 20), MAT.titanium);
+  mount.position.y = 0.03; g.add(mount);
+
+  if(type === 'camera'){
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.42, 0.58), MAT.titanium);
+    box.position.set(0, 0.36, 0); g.add(box);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.4, 20), MAT.silver);
+    barrel.rotation.x = Math.PI/2; barrel.position.set(0, 0.36, 0.4); g.add(barrel);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.14, 20), MAT.glowCyan);
+    lens.position.set(0, 0.36, 0.61); g.add(lens);
+    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.23, 0.15, 20, 1, true), MAT.dark);
+    hood.rotation.x = Math.PI/2; hood.position.set(0, 0.36, 0.48); g.add(hood);
+  } else if(type === 'dish'){
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.14, 20), MAT.titanium);
+    collar.position.y = 0.16; g.add(collar);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 8), MAT.silver);
+    mast.position.y = 0.38; g.add(mast);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.58, 28, 20, 0, Math.PI*2, 0, Math.PI/2.6), new THREE.MeshStandardMaterial({ color:0xd7dee6, metalness:0.85, roughness:0.3, side:THREE.DoubleSide }));
+    dish.rotation.x = Math.PI * 0.62; dish.position.y = 0.62; g.add(dish);
+    const feed = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 8), MAT.goldMLI);
+    feed.rotation.x = -0.5; feed.position.set(0, 0.76, 0.14); g.add(feed);
+    const horn = new THREE.Mesh(new THREE.SphereGeometry(0.065, 12, 12), MAT.copper);
+    horn.position.set(0, 0.94, 0.28); g.add(horn);
+    const truss = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), MAT.silver);
+    truss.position.y = 0.22; g.add(truss);
+  } else if(type === 'drill'){
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.13, 14, 14), MAT.copper);
+    shoulder.position.set(0.42, 0.18, 0); g.add(shoulder);
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.78, 12), MAT.silver);
+    upper.position.set(0.72, 0.44, 0); upper.rotation.z = -Math.PI/3.2; g.add(upper);
+    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 12), MAT.copper);
+    elbow.position.set(1.04, 0.7, 0); g.add(elbow);
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.62, 12), MAT.silver);
+    fore.position.set(1.2, 0.4, 0); fore.rotation.z = Math.PI/5.5; g.add(fore);
+    const bit = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.38, 10), MAT.titanium);
+    bit.position.set(1.32, 0.12, 0); bit.rotation.z = Math.PI; g.add(bit);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.13, 12), MAT.dark);
+    collar.position.set(1.28, 0.28, 0); g.add(collar);
+  } else {
+    // Radar de penetración
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.22, 0.48), MAT.titanium);
+    base.position.y = 0.2; g.add(base);
+    for(const s of [-1,1]){
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.72, 0.66), MAT.radiator);
+      panel.position.set(s*0.46, 0.48, 0); panel.rotation.z = -s*0.2; g.add(panel);
+    }
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.66, 6), MAT.silver);
+    ant.position.set(0, 0.8, -0.18); g.add(ant);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), MAT.glowAmber);
+    tip.position.set(0, 1.14, -0.18); g.add(tip);
+    engineFlames.push({ mesh:tip, base:0.08, kind:'tip' });
+  }
+  return g;
+}
+
+/* 5. LANZADOR */
+function createLauncher3D(type){
+  const g = new THREE.Group();
+  const boosters = type === 'sonda' ? 0 : (type === 'falcon' ? 2 : 4);
+  const r = type === 'heavy' ? 0.52 : 0.42;
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1.9, 24), MAT.hull);
+  core.position.y = -2.35; core.castShadow = true; g.add(core);
+  // bandas
+  for(const y of [-1.55, -3.1]){
+    const band = new THREE.Mesh(new THREE.TorusGeometry(r*1.01, 0.035, 8, 32), MAT.titanium);
+    band.rotation.x = Math.PI/2; band.position.y = y; g.add(band);
+  }
+  // motores
+  for(const s of [-1, 1]){
+    const bell = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.32, 14), MAT.nozzle);
+    bell.rotation.x = Math.PI; bell.position.set(s*0.17, -3.42, 0); g.add(bell);
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.9, 14, 1, true), new THREE.MeshBasicMaterial({ color:0xff9d4d, transparent:true, opacity:0.6 }));
+    fl.rotation.x = Math.PI; fl.position.set(s*0.17, -4.0, 0); g.add(fl);
+    engineFlames.push({ mesh:fl, base:0.9, kind:'launcher' });
+  }
+  for(let i=0;i<boosters;i++){
+    const a = (i/boosters)*Math.PI*2 + Math.PI/4;
+    const booster = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 1.5, 18), MAT.goldMLI);
+    booster.position.set(Math.cos(a)*0.68, -2.3, Math.sin(a)*0.68); g.add(booster);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.34, 18), MAT.titanium);
+    nose.position.set(Math.cos(a)*0.68, -1.4, Math.sin(a)*0.68); g.add(nose);
+    const bn = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 12), MAT.nozzle);
+    bn.rotation.x = Math.PI; bn.position.set(Math.cos(a)*0.68, -3.14, Math.sin(a)*0.68); g.add(bn);
+  }
+  if(type === 'heavy'){
+    for(const s of [-1,1]){
+      const aux = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.6, 18), MAT.hull);
+      aux.position.set(s*0.72, -2.4, 0); g.add(aux);
+    }
+  }
+  return g;
+}
+
+/* ================= ACOPLADO CON ANIMACIÓN ================= */
+/* Ajusta la nave para que su punto más bajo quede justo sobre la plataforma */
+function fitShipToStage(){
+  if(!shipGroup || !THREE.Box3) return;
+  try{
+    shipGroup.position.y = 0;
+    shipGroup.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(shipGroup);
+    if(!box || !isFinite(box.min.y)) return;
+    const delta = platformTopY + 0.04 - box.min.y;
+    shipGroundY = isFinite(delta) ? delta : 0;
+    shipGroup.position.y = shipGroundY;
+  }catch(e){
+    shipGroundY = 0.12;
+    shipGroup.position.y = shipGroundY;
+  }
+}
+
+function remove3DMesh(category){
+  const m = activeMeshes[category];
+  if(m){ shipGroup.remove(m); activeMeshes[category] = null; }
+  engineFlames = engineFlames.filter(f => f.mesh.parent);
+}
+
+function dock3DMesh(category, type){
+  remove3DMesh(category);
+  let g = null;
+  if(category === 'chassis') g = createChassis3D(type);
+  else if(category === 'propulsion') g = createPropulsion3D(type);
+  else if(category === 'power') g = createPower3D(type);
+  else if(category === 'payload') g = createPayload3D(type);
+  else if(category === 'launcher') g = createLauncher3D(type);
+  if(!g) return;
+  g.scale.setScalar(0.01);
+  shipGroup.add(g);
+  activeMeshes[category] = g;
+  const t0 = performance.now();
+  const grow = () => {
+    const k = Math.min(1, (performance.now() - t0) / 260);
+    const e = 1 - Math.pow(1 - k, 3);
+    g.scale.setScalar(0.01 + e*0.99);
+    if(k < 1) requestAnimationFrame(grow);
+    else fitShipToStage();   // mide con la pieza ya a escala real
+  };
+  g.scale.setScalar(1);
+  fitShipToStage();
+  grow();
+}
+
+/* ================= LOOP ================= */
+function onWindowResize(){
+  if(!renderer) return;
+  camera.aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, Math.max(1, window.innerHeight));
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  if(!renderer) return;
+  const t = clock.getElapsedTime();
+  if(controls) controls.update();
+
+  if(shipGroup && autoRotate) shipGroup.rotation.y += 0.0035;
+  if(!shipGroup) return;
+
+  // Flotación suave
+  if(state.phase === 3){
+    shipGroup.position.y = shipGroundY + (flightProgress/100) * 2.9;
+  } else {
+    shipGroup.position.y = shipGroundY + Math.sin(t*0.9) * 0.06;
+  }
+
+  // Llama de motores: parpadeo
+  engineFlames.forEach((f, i) => {
+    if(!f.mesh || !f.mesh.parent) return;
+    // En la plataforma el lanzador está apagado: sin llamas atravesando el piso
+    if(f.kind === 'launcher' && state.phase !== 3){
+      f.mesh.visible = false;
+      return;
+    }
+    f.mesh.visible = true;
+    const flick = 0.75 + Math.sin(t*18 + i*2.1)*0.18 + Math.random()*0.09;
+    f.mesh.scale.y = f.base * flick;
+    f.mesh.scale.x = 0.9 + Math.sin(t*12+i)*0.08;
+    f.mesh.scale.z = f.mesh.scale.x;
+    if(f.mesh.material && f.mesh.material.opacity !== undefined){
+      f.mesh.material.opacity = 0.45 + flick*0.35;
+    }
+  });
+
+  if(starField) starField.rotation.y = t*0.006;
+  if(dustField){ dustField.rotation.y = -t*0.04; dustField.position.y = Math.sin(t*0.5)*0.4; }
+  if(bodyMesh) bodyMesh.rotation.y = t*0.02;
+  if(beltGroup) beltGroup.children.forEach(m => { m.rotation.x += m.userData.spin*0.6; m.rotation.y += m.userData.spin; });
+
+  // Pulsos de peligro
+  if(dangerLight && state.danger > 0){
+    const p = 0.55 + Math.sin(t*7)*0.45;
+    dangerLight.intensity = (state.danger/100) * 5.5 * p;
+  } else if(dangerLight){
+    dangerLight.intensity = 0;
+  }
+  if(rimLightA) rimLightA.intensity = 1.8 + Math.sin(t*2)*0.35;
+
+  const __dt = Math.min(0.05, Math.max(0.001, t - lastAnimT));
+  lastAnimT = t;
+  updateImpacts(__dt, t);
+
+  renderer.render(scene, camera);
+}
+
+function resetCamera3D(){
+  if(!camera) return;
+  camera.position.set(6.5, 4.2, 9);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  playSound('click');
+}
+
+function toggleRotate3D(){
+  autoRotate = !autoRotate;
+  playSound('click');
+  showNotification(autoRotate ? 'Rotación automática activada' : 'Rotación automática detenida', 'ok');
+}
+</script>
+<script>
+/* ================================================================== */
+/* LÓGICA DE JUEGO — FASES 1 A 4                                       */
+/* ================================================================== */
+
+/* ---------------- REQUISITOS EFECTIVOS ---------------- */
+function isJunior(){ return state.difficulty === 'junior'; }
+function reqPower(){ return state.destination ? Math.round(state.destination.reqPower * (isJunior()?0.7:1)) : 0; }
+function reqDeltaV(){ return state.destination ? state.destination.reqDeltaV * (isJunior()?0.8:1) : 0; }
+function reqComm(){ return state.destination ? state.destination.reqComm : 0; }
+
+/* ---------------- FASE 1 → 2 ---------------- */
+function selectDestination(key){
+  state.destination = DESTINATIONS[key];
+  playSound('dock');
+  $('phase-1-ui').classList.add('hidden');
+  $('phase-2-ui').classList.remove('hidden');
+  updatePhaseIndicators(2);
+  if(!sceneReady) initThreeJS();
+  applyEnvironment(key);
+  if(camera){ camera.position.set(7, 4.8, 10.5); controls.target.set(0,-0.4,0); controls.update(); }
+  switchCategory('chassis');
+  recalculateStats();
+}
+
+function updatePhaseIndicators(n){
+  for(let i=1;i<=4;i++){
+    const el = $('step-'+i+'-indicator');
+    if(!el) continue;
+    const dot = el.children[0];
+    if(i === n){
+      el.className = 'flex items-center gap-2 px-2.5 py-1.5 rounded border border-cyan-500 bg-cyan-500/15 text-cyan-300 font-bold';
+      dot.className = 'w-4 h-4 rounded-full bg-cyan-500 text-gray-950 grid place-items-center text-[9px] font-black';
+    } else if(i < n){
+      el.className = 'flex items-center gap-2 px-2.5 py-1.5 rounded border border-emerald-600/50 bg-emerald-950/50 text-emerald-400';
+      dot.className = 'w-4 h-4 rounded-full bg-emerald-500 text-gray-950 grid place-items-center text-[9px] font-black';
+    } else {
+      el.className = 'flex items-center gap-2 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/40 text-slate-500';
+      dot.className = 'w-4 h-4 rounded-full bg-slate-700 text-slate-300 grid place-items-center text-[9px] font-black';
+    }
+  }
+}
+
+/* ---------------- FASE 2 — INVENTARIO ---------------- */
+function switchCategory(cat){
+  state.activeCategory = cat;
+  playSound('click');
+  ['chassis','propulsion','power','payload','launcher'].forEach(c => {
+    const tab = $('tab-'+c);
+    if(!tab) return;
+    tab.className = c === cat
+      ? 'py-1.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-300 font-bold'
+      : 'py-1.5 rounded bg-slate-800/70 border border-slate-700 text-slate-400 hover:text-slate-200';
+  });
+  const list = COMPONENTS[cat] || [];
+  $('component-list-container').innerHTML = list.map(item => {
+    const sel = state.selection[cat] && state.selection[cat].id === item.id;
+    const tags = [];
+    tags.push(`<span class="text-slate-300"><i class="fa-solid fa-weight-hanging text-cyan-500"></i> ${fmtNum(item.mass)} kg</span>`);
+    tags.push(`<span class="text-emerald-400"><i class="fa-solid fa-dollar-sign"></i>${item.cost}M</span>`);
+    if(item.power) tags.push(`<span class="${item.isNuclear?'text-amber-300':'text-amber-400'}"><i class="fa-solid fa-bolt"></i>+${item.power}W${item.isNuclear?' RTG':''}</span>`);
+    if(item.science) tags.push(`<span class="text-purple-400"><i class="fa-solid fa-microscope"></i>+${item.science}</span>`);
+    if(item.comm) tags.push(`<span class="text-indigo-300"><i class="fa-solid fa-tower-broadcast"></i>+${item.comm}</span>`);
+    if(item.shield) tags.push(`<span class="text-blue-400"><i class="fa-solid fa-shield"></i>+${item.shield}%</span>`);
+    if(item.thrust) tags.push(`<span class="text-orange-400"><i class="fa-solid fa-fire"></i>${item.thrust}N</span>`);
+    if(item.dv) tags.push(`<span class="text-indigo-300"><i class="fa-solid fa-rocket"></i>+${item.dv} km/s</span>`);
+    if(item.capacity) tags.push(`<span class="text-cyan-300"><i class="fa-solid fa-arrow-up"></i>${fmtNum(item.capacity)} kg</span>`);
+
+    // Aviso contextual: qué módulo funciona mejor en este destino
+    let hint = '';
+    const d = state.destination;
+    if(d){
+      if(cat === 'power' && d.solarEff === 0 && !item.isNuclear) hint = '<span class="tag border-red-500/50 text-red-400"><i class="fa-solid fa-ban"></i> Inútil sin luz solar</span>';
+      if(cat === 'power' && d.solarEff === 0 && item.isNuclear) hint = '<span class="tag border-emerald-500/50 text-emerald-400"><i class="fa-solid fa-check"></i> Recomendado aquí</span>';
+      if(cat === 'power' && d.solarEff > 0 && item.isNuclear) hint = '<span class="tag border-amber-500/50 text-amber-400">Rinde al 100% (solar aquí es ' + Math.round(d.solarEff*100) + '%)</span>';
+      if(cat === 'launcher' && item.capacity < d.maxMass) hint = '<span class="tag border-amber-500/50 text-amber-400">Capacidad menor al límite del destino</span>';
+    }
+
+    return `
+      <div onclick="selectComponent('${cat}','${item.id}')" class="comp-card p-2.5 rounded-lg border ${sel
+        ? 'bg-cyan-950/60 border-cyan-400 shadow-[0_0_16px_rgba(34,211,238,.18)]'
+        : 'bg-slate-900/60 border-slate-700/80 hover:border-slate-500 hover:bg-slate-800/70'}">
+        <div class="flex justify-between items-start gap-2 mb-1">
+          <span class="font-orbitron font-bold text-[11px] text-white leading-tight">${item.name}</span>
+          ${sel ? '<i class="fa-solid fa-circle-check text-cyan-400 text-xs"></i>' : ''}
+        </div>
+        <p class="text-[10px] text-slate-500 mb-1.5 font-mono leading-snug">${item.desc}</p>
+        ${hint ? '<div class="mb-1.5">' + hint + '</div>' : ''}
+        <div class="grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[9.5px] pt-1.5 border-t border-slate-700/40">${tags.join('')}</div>
+      </div>`;
+  }).join('');
+}
+
+function selectComponent(cat, id){
+  const item = (COMPONENTS[cat] || []).find(i => i.id === id);
+  if(!item) return;
+  if(state.selection[cat] && state.selection[cat].id === id){
+    state.selection[cat] = null;
+    remove3DMesh(cat);
+    playSound('click');
+  } else {
+    state.selection[cat] = item;
+    dock3DMesh(cat, item.type);
+    playSound('dock');
+  }
+  if(cat === 'chassis' && activeMeshes.payload) activeMeshes.payload.position.y = chassisTopY();
+  recalculateStats();
+  switchCategory(cat);
+}
+
+/* ---------------- CÁLCULO DE MÉTRICAS ---------------- */
+function recalculateStats(){
+  let mass=0,budget=0,power=0,science=0,shield=0,thrust=0,deltaV=0,comm=0,capacity=0;
+  Object.keys(state.selection).forEach(cat => {
+    const it = state.selection[cat];
+    if(!it) return;
+    mass += it.mass || 0;
+    budget += it.cost || 0;
+    if(it.power) power += it.isNuclear ? it.power : Math.round(it.power * (state.destination ? state.destination.solarEff : 1));
+    if(cat === 'launcher' || cat === 'propulsion') deltaV += it.dv || 0;
+    comm += it.comm || 0;
+    science += it.science || 0;
+    shield += it.shield || 0;
+    thrust += it.thrust || 0;
+    if(cat === 'launcher') capacity = it.capacity || 0;
+  });
+  state.stats = { mass, budget, power, science, shield, thrust, deltaV: Math.round(deltaV*10)/10, comm, capacity };
+  updateTelemetryUI();
+}
+
+/* ---------------- AMENAZA AMBIENTAL ---------------- */
+function computeDanger(){
+  const d = state.destination;
+  const s = state.stats;
+  if(!d) return 0;
+  let risk = d.risk * 13;                       // base 26 / 39 / 65
+  if(s.mass > d.maxMass) risk += 14;
+  else if(s.mass > d.maxMass * 0.9) risk += 7;
+  if(s.power < reqPower()) risk += 14;
+  if(s.deltaV < reqDeltaV()) risk += 12;
+  if(s.shield < d.risk * 11) risk += 10;
+  if(s.comm < reqComm()) risk += 8;
+  if(s.capacity && (s.mass - (state.selection.launcher ? state.selection.launcher.mass : 0)) > s.capacity) risk += 10;
+  if(s.budget > d.budget) risk += 6;
+  return clamp(Math.round(risk), 0, 100);
+}
+
+function readiness(){
+  const d = state.destination, s = state.stats;
+  if(!d) return { pct:0, items:[] };
+  const checks = [
+    { ok: !!state.selection.chassis,          label:'Chasis integrado',            w:12 },
+    { ok: !!state.selection.propulsion,       label:'Propulsión integrada',          w:12 },
+    { ok: !!state.selection.power,            label:'Fuente de energía integrada',   w:12 },
+    { ok: !!state.selection.payload,          label:'Carga científica integrada',    w:12 },
+    { ok: !!state.selection.launcher,         label:'Lanzador asignado',             w:12 },
+    { ok: s.mass <= d.maxMass,                label:'Masa dentro del límite',        w:9 },
+    { ok: s.budget <= d.budget,               label:'Presupuesto dentro del límite', w:9 },
+    { ok: s.power >= reqPower(),              label:'Energía suficiente',            w:8 },
+    { ok: s.deltaV >= reqDeltaV(),            label:'Delta-v suficiente',            w:8 },
+    { ok: s.comm >= reqComm(),                label:'Enlace de datos suficiente',    w:4 },
+    { ok: s.capacity && (s.mass - (state.selection.launcher?state.selection.launcher.mass:0) || 0) <= s.capacity, label:'Carga útil admisible', w:4 }
+  ];
+  const total = checks.reduce((a,c)=>a+c.w, 0);
+  const got = checks.filter(c=>c.ok).reduce((a,c)=>a+c.w, 0);
+  return { pct: Math.round((got/total)*100), items: checks };
+}
+
+function updateTelemetryUI(){
+  const d = state.destination;
+  if(!d) return;
+  const s = state.stats;
+  const count = Object.values(state.selection).filter(Boolean).length;
+  $('selected-count').innerText = count + '/5';
+
+  // MASA
+  $('stat-mass').innerText = fmtNum(s.mass);
+  $('stat-mass-limit').innerText = '/ ' + fmtNum(d.maxMass) + ' kg';
+  const mPct = clamp((s.mass/d.maxMass)*100, 0, 100);
+  const bm = $('bar-mass');
+  bm.style.width = mPct + '%';
+  bm.style.background = s.mass > d.maxMass ? '#ef4444' : (s.mass > d.maxMass*0.9 ? '#f59e0b' : '#06b6d4');
+
+  // PRESUPUESTO
+  $('stat-budget').innerText = '$' + fmtNum(s.budget) + 'M';
+  $('stat-budget-limit').innerText = '/ $' + fmtNum(d.budget) + 'M';
+  const bPct = clamp((s.budget/d.budget)*100, 0, 100);
+  const bb = $('bar-budget');
+  bb.style.width = bPct + '%';
+  bb.style.background = s.budget > d.budget ? '#ef4444' : '#10b981';
+
+  // ENERGÍA
+  const rp = reqPower();
+  $('stat-power').innerText = fmtNum(s.power) + ' W';
+  $('stat-power-req').innerText = '/ ' + fmtNum(rp) + ' W';
+  const pPct = rp ? clamp((s.power/rp)*100, 0, 100) : 0;
+  const bp = $('bar-power');
+  bp.style.width = pPct + '%';
+  bp.style.background = s.power < rp ? '#f59e0b' : '#22c55e';
+
+  // CIENCIA
+  $('stat-science').innerText = fmtNum(s.science) + ' pts';
+  $('bar-science').style.width = clamp((s.science/500)*100, 0, 100) + '%';
+
+  // DELTA-V
+  const rd = reqDeltaV();
+  $('stat-deltav').innerText = s.deltaV.toFixed(1);
+  $('stat-deltav-req').innerText = '/ ' + rd.toFixed(1);
+  const dPct = rd ? clamp((s.deltaV/rd)*100, 0, 100) : 0;
+  const bd = $('bar-deltav');
+  bd.style.width = dPct + '%';
+  bd.style.background = s.deltaV < rd ? '#f59e0b' : '#818cf8';
+
+  // ENLACE
+  $('stat-comm').innerHTML = 'ENLACE ' + s.comm + ' / ' + reqComm();
+
+  // SISTEMAS
+  $('stat-shield').innerText = s.shield + '%';
+  $('stat-thrust').innerText = s.thrust + ' N';
+
+  // ESTADO
+  const launcher = state.selection.launcher;
+  const payloadMass = launcher ? s.mass - launcher.mass : s.mass;
+  const tag = $('status-tag');
+  let text, color;
+  if(count < 5){ text = 'INCOMPLETO'; color = '#f59e0b'; }
+  else if(s.mass > d.maxMass){ text = 'SOBREPESO'; color = '#ef4444'; }
+  else if(launcher && payloadMass > launcher.capacity){ text = 'CARGA EXCEDIDA'; color = '#ef4444'; }
+  else if(s.budget > d.budget){ text = 'PRESUPUESTO EXCEDIDO'; color = '#ef4444'; }
+  else if(s.power < rp){ text = 'ENERGÍA INSUFICIENTE'; color = '#f59e0b'; }
+  else if(s.deltaV < rd){ text = 'ΔV INSUFICIENTE'; color = '#f59e0b'; }
+  else if(s.comm < reqComm()){ text = 'ENLACE INSUFICIENTE'; color = '#fbbf24'; }
+  else { text = 'LISTO PARA LANZAR'; color = '#22c55e'; }
+  tag.innerText = text; tag.style.color = color;
+
+  // READINESS
+  const r = readiness();
+  $('readiness-pct').innerText = r.pct + '%';
+  $('readiness-pct').style.color = r.pct >= 90 ? '#22c55e' : r.pct >= 60 ? '#22d3ee' : '#f59e0b';
+  const br = $('bar-readiness');
+  br.style.width = r.pct + '%';
+  br.style.background = r.pct >= 90 ? '#22c55e' : r.pct >= 60 ? '#06b6d4' : '#f59e0b';
+
+  const fails = r.items.filter(i => !i.ok).slice(0, 4);
+  const danger = computeDanger();
+  $('readiness-list').innerHTML =
+    (fails.length
+      ? fails.map(f => '<div class="text-amber-500"><i class="fa-solid fa-xmark mr-1"></i>' + f.label + '</div>').join('')
+      : '<div class="text-emerald-400"><i class="fa-solid fa-check mr-1"></i>Todos los sistemas nominales</div>') +
+    '<div class="border-t border-slate-800 pt-1 mt-1 flex items-center justify-between"><span class="text-slate-500">AMENAZA AMBIENTAL</span>' +
+    '<span style="color:' + (danger >= 70 ? '#ef4444' : danger >= 45 ? '#f59e0b' : '#22c55e') + '">' + danger + '%</span></div>' +
+    '<div class="track"><div class="fill" style="width:' + danger + '%;background:' + (danger >= 70 ? '#ef4444' : danger >= 45 ? '#f59e0b' : '#22c55e') + '"></div></div>';
+
+  $('launch-hint').innerText = count < 5
+    ? 'Completa los 5 módulos para autorizar el lanzamiento.'
+    : (text === 'LISTO PARA LANZAR' ? 'Todos los sistemas nominales. Lanzamiento autorizado.' : 'Revisa las alertas antes de lanzar: ' + text);
+
+  // ambiente 3D: la luz de peligro escala con el riesgo del diseño
+  state.danger = danger;
+  const vig = $('danger-vignette');
+  if(vig){
+    vig.style.opacity = (danger/100 * 0.85).toFixed(2);
+    vig.classList.toggle('critical', danger >= 70);
+  }
+}
+
+/* ---------------- VOLVER / REINICIAR ---------------- */
+function returnToPhase1(){
+  playSound('click');
+  $('phase-2-ui').classList.add('hidden');
+  $('phase-1-ui').classList.remove('hidden');
+  updatePhaseIndicators(1);
+  state.danger = 0;
+  const vig = $('danger-vignette');
+  if(vig){ vig.style.opacity = 0; vig.classList.remove('critical'); }
+}
+
+function restartGame(){
+  playSound('click');
+  stopTelemetryFeed();
+  clearTimers();
+  ['alert-overlay','outcome-overlay','sim-event-modal','phase-3-ui','phase-4-ui'].forEach(id => $(id).classList.add('hidden'));
+  state.selection = { chassis:null, propulsion:null, power:null, payload:null, launcher:null };
+  state.simHealth = 100; state.integrity = 100; state.decision = null;
+  clearImpacts();
+  state.outcome = null; state.missionLost = false; state.danger = 0;
+  clearShip();
+  if(shipGroup) shipGroup.rotation.set(0,0,0);
+  recalculateStats();
+  $('phase-1-ui').classList.remove('hidden');
+  updatePhaseIndicators(1);
+  $('difficulty-modal').classList.remove('hidden');
+  $('diff-badge').classList.add('hidden');
+  $('diff-badge').classList.remove('flex');
+  if(scene){ scene.background.setHex(0x030712); scene.fog.color.setHex(0x030712); }
+}
+
+/* ================================================================== */
+/* FASE 3 — VUELO: amenaza ambiental evolutiva                        */
+/* ================================================================== */
+let flightInterval = null;
+let flightProgress = 0;
+let hazardsResolved = 0;
+
+function moveShipVisual(){
+  if(shipGroup) shipGroup.position.y = shipGroundY + (flightProgress/100) * 2.9;
+}
+
+function updateFlightHud(){
+  const d = state.destination; if(!d) return;
+  $('sim-progress-bar').style.width = clamp(flightProgress,0,100) + '%';
+  $('sim-distance').innerText = fmtNum(Math.round((flightProgress/100)*d.distKm)) + ' km';
+  let st, ph;
+  if(flightProgress < 14){ st='ASCENSO'; ph='ASCENSO'; }
+  else if(flightProgress < 32){ st='INYECCIÓN ORBITAL'; ph='INYECCIÓN'; }
+  else if(flightProgress < 62){ st='CRUCERO INTERPLANETARIO'; ph='CRUCERO'; }
+  else if(flightProgress < 86){ st='APROXIMACIÓN FINAL'; ph='APROXIMACIÓN'; }
+  else { st='ENTRADA EN ÓRBITA'; ph='ÓRBITA'; }
+  $('sim-status').innerText = st;
+  $('sim-phase-label').innerText = ph;
+}
+
+function needsSecondHazard(){
+  return (state.outcome && !state.outcome.success) || state.danger >= 45;
+}
+
+function setIntegrity(v){
+  state.integrity = clamp(Math.round(v), 0, 100);
+  const el = $('sim-health');
+  if(!el) return;
+  el.innerText = state.integrity + '%';
+  el.className = 'font-orbitron text-sm md:text-base font-bold ' +
+    (state.integrity >= 80 ? 'text-emerald-400' : state.integrity >= 45 ? 'text-amber-400' : 'text-red-400');
+}
+
+function setThreatLabel(extraDamage){
+  const d = state.destination;
+  if(!d) return;
+  const risk = clamp(d.risk * 13 + (extraDamage || 0), 0, 100);
+  const el = $('sim-threat');
+  if(el){
+    el.innerText = risk >= 70 ? 'CRÍTICA' : risk >= 45 ? 'ALTA' : risk >= 26 ? 'MEDIA' : 'BAJA';
+    el.className = 'font-orbitron text-sm font-bold ' + (risk >= 70 ? 'text-red-400' : risk >= 45 ? 'text-amber-400' : risk >= 26 ? 'text-cyan-400' : 'text-emerald-400');
+  }
+  const vig = $('danger-vignette');
+  if(vig){
+    vig.style.opacity = (risk / 100 * 0.8).toFixed(2);
+    vig.classList.toggle('critical', risk >= 60);
+  }
+  if(dangerLight) dangerLight.intensity = (risk / 100) * 5;
+}
+
+function pauseFlight(){ if(flightInterval){ clearInterval(flightInterval); flightInterval = null; } }
+
+function startFlight(){
+  pauseFlight();
+  flightInterval = setInterval(() => {
+    if(state.phase !== 3) return;
+    flightProgress += 1.2;
+    moveShipVisual();
+    updateFlightHud();
+    if(flightProgress >= 40 && hazardsResolved === 0){ pauseFlight(); triggerFlightAnomaly(0); return; }
+    if(flightProgress >= 80 && hazardsResolved === 1 && needsSecondHazard()){ pauseFlight(); triggerFlightAnomaly(1); return; }
+    if(flightProgress >= 100){ pauseFlight(); stopTelemetryFeed(); later(() => finishSimulation(), 700); }
+  }, 110);
+}
+
+function launchSimulation(){
+  const d = state.destination, s = state.stats;
+  if(!d) return;
+  const launcher = state.selection.launcher;
+  if(!state.selection.chassis || !state.selection.propulsion || !state.selection.power || !state.selection.payload || !launcher){
+    showNotification('Debes equipar los 5 módulos principales antes de despegar.'); return;
+  }
+  if(s.mass > d.maxMass){ showNotification('Masa excesiva: ' + fmtNum(s.mass) + ' kg supera el límite de ' + fmtNum(d.maxMass) + ' kg.'); return; }
+  if((s.mass - launcher.mass) > launcher.capacity){ showNotification('Carga útil excedida: el lanzador admite ' + fmtNum(launcher.capacity) + ' kg.'); return; }
+  if(s.budget > d.budget){ showNotification('Presupuesto superado en $' + fmtNum(s.budget - d.budget) + 'M. La NASA cancela el lanzamiento.'); return; }
+  if(s.power < reqPower()){ showNotification('Energía insuficiente: ' + s.power + ' W / ' + reqPower() + ' W requeridos.'); return; }
+  if(s.deltaV < reqDeltaV()){ showNotification('Delta-v insuficiente: ' + s.deltaV.toFixed(1) + ' / ' + reqDeltaV().toFixed(1) + ' km/s.'); return; }
+  if(s.comm < reqComm()){ showNotification('Enlace insuficiente: ' + s.comm + ' / ' + reqComm() + ' puntos de señal.'); return; }
+
+  playSound('launch');
+  state.phase = 3;
+  state.integrity = 100;
+  state.decision = null;
+  state.outcome = null;
+  hazardsResolved = 0;
+  flightProgress = 0;
+  clearImpacts();
+
+  $('phase-2-ui').classList.add('hidden');
+  $('phase-3-ui').classList.remove('hidden');
+  updatePhaseIndicators(3);
+  $('sim-target-label').innerText = d.name + ' · ' + d.title;
+  $('sim-distance').innerText = '0 km';
+  $('sim-progress-bar').style.width = '0%';
+  setIntegrity(100);
+  setThreatLabel(0);
+  startTelemetryFeed();
+  startFlight();
+}
+
+/* ---------------- ANOMALÍAS (2 fases: primaria y secundaria) ---------------- */
+function buildHazard(phase){
+  const d = state.destination, s = state.stats, jr = isJunior();
+  if(phase === 0){
+    if(d.id === 'europa') return {
+      title:'CINTURÓN DE RADIACIÓN JOVIANA',
+      nasa:{ ref:'NASA Science · Europa', data:'Europa está dentro del campo magnético de Júpiter y su superficie recibe radiación ionizante intensa; aun así esconde un océano con el doble de agua que la Tierra.', url:'https://science.nasa.gov/jupiter/moons/europa/', pred:'La electrónica comercial falla primero. Con blindaje ≥ 35% la dosis se mantiene bajo el umbral operativo.' },
+      desc:'Los dosímetros detectan partículas de alta energía muy por encima de la tolerancia de la electrónica de a bordo. Debes decidir ahora cómo atravesar el cinturón.',
+      hint: jr ? 'Blindaje ≥ 35% permite reorientar las placas sin daño. Un excedente de energía ≥ 15% permite apagar sistemas no críticos.' : '',
+      options:[
+        { key:'a', label:'Reorientar las placas de blindaje hacia el flujo de radiación', req: s.shield >= 35, reqText:'Blindaje ≥ 35%', dmgOk:0, dmgFail:45, tag:'DEFENSA' },
+        { key:'b', label:'Mantener el rumbo y confiar en la electrónica endurecida', req:true, reqText:'', dmgOk:28, dmgFail:28, tag:'RIESGO' },
+        { key:'c', label:'Apagar sistemas no críticos y esperar en modo seguro', req: s.power >= reqPower()*1.15, reqText:'Excedente ≥ 15% energía', dmgOk:10, dmgFail:34, tag:'TÁCTICA' }
+      ]};
+    if(d.id === 'mars') return {
+      title:'TORMENTA DE POLVO GLOBAL',
+      nasa:{ ref:'NASA/JPL · Opportunity 2018', data:'Tau 10,8 (el cielo se vuelve noche permanente), 35 millones de km² cubiertos y −29 °C con baterías bajo 24 V.', url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/', pred:'La energía solar cae a casi cero. Un RTG o un excedente ≥ 250 W evita el modo de fallo por baja potencia.' },
+      desc:'Una pared de polvo de 4.000 km se aproxima. La captación solar cae por debajo del umbral de supervivencia de los calentadores.',
+      hint: jr ? 'Un RTG nuclear o un excedente de energía ≥ 250 W permiten el modo de bajo consumo seguro.' : '',
+      options:[
+        { key:'a', label:'Entrar en modo de bajo consumo hasta que se disipe el polvo', req: (state.selection.power && state.selection.power.isNuclear) || (s.power - reqPower() >= 250), reqText:'RTG o excedente ≥ 250 W', dmgOk:5, dmgFail:32, tag:'AHORRO' },
+        { key:'b', label:'Encender calentadores auxiliares a máxima potencia', req:true, reqText:'', dmgOk:24, dmgFail:24, tag:'TÉRMICO' },
+        { key:'c', label:'Reorientar los paneles hacia el sol rasante', req: !!(state.selection.power && !state.selection.power.isNuclear), reqText:'Requiere paneles solares', dmgOk:14, dmgFail:30, tag:'SENSORES' }
+      ]};
+    return {
+      title:'ENJAMBRE DE MICROMETEORITOS',
+      nasa:{ ref:'NASA HVIT · MMOD', data:'Meteoroides entre 11 y 72 km/s (media 22–23 km/s). A 7 km/s una esfera de aluminio atraviesa una placa 4 veces su diámetro: el escudo Whipple fragmenta antes de que llegue a la pared trasera.', url:'https://ntrs.nasa.gov/api/citations/20190001193/downloads/20190001193.pdf', pred:'Con empuje ≥ 300 N la esquiva es viable; sin él, el escudo absorbe pero acumula daño.' },
+      desc:'El radar de a bordo detecta un enjambre de fragmentos rocosos a 12 km/s en rumbo de colisión múltiple.',
+      hint: jr ? 'Un empuje ≥ 300 N permite la maniobra evasiva; un blindaje ≥ 30% absorbe el impacto secundario.' : '',
+      options:[
+        { key:'a', label:'Ejecutar maniobra de esquiva con los propulsores', req: s.thrust >= 300, reqText:'Empuje ≥ 300 N', dmgOk:0, dmgFail:34, tag:'EVASIÓN' },
+        { key:'b', label:'Absorber el impacto con la cubierta exterior', req:true, reqText:'', dmgOk:18, dmgFail:18, tag:'PASIVO' },
+        { key:'c', label:'Orientar el blindaje grueso al enjambre y continuar', req: s.shield >= 30, reqText:'Blindaje ≥ 30%', dmgOk:6, dmgFail:40, tag:'BLINDAJE' }
+      ]};
+  }
+  // ---- fase 1: consecuencia ambiental de la primera decisión ----
+  if(d.id === 'europa') return {
+    title:'SOBREPASO DEL CINTURÓN EXTERNO',
+    nasa:{ ref:'NASA Science · Europa', data:'El ambiente radiativo joviano es el más severo del sistema solar para la electrónica: la dosis se acumula en cada órbita.', url:'https://science.nasa.gov/jupiter/moons/europa/', pred:'Solo un blindaje ≥ 55% atraviesa la zona densa sin daño estructural.' },
+    desc:'La primera maniobra alteró tu trayectoria: ahora cruzas la zona de mayor densidad de partículas. El casco acumula dosis.',
+    hint: jr ? 'Necesitas blindaje ≥ 55% para atravesar sin daño estructural.' : '',
+    options:[
+      { key:'a', label:'Atravesar de frente con el blindaje principal', req: s.shield >= 55, reqText:'Blindaje ≥ 55%', dmgOk:0, dmgFail:62, tag:'BLINDAJE' },
+      { key:'b', label:'Viraje largo: gastar propelente para rodear el cinturón', req: s.deltaV >= reqDeltaV()+1.5, reqText:'Δv extra ≥ 1.5 km/s', dmgOk:8, dmgFail:40, tag:'TÁCTICA' }
+    ]};
+  if(d.id === 'mars') return {
+    title:'ENTRADA ATMOSFÉRICA VIOLENTA',
+    nasa:{ ref:'NASA/JPL · Opportunity 2018', data:'El polvo cambia la densidad y la opacidad de la atmósfera (tau); el perfil de entrada real difiere del previsto en el diseño.', url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/', pred:'Escudo ≥ 35% soporta la interfaz; si no, hay que frenar propulsivamente con Δv extra.' },
+    desc:'El polvo en suspensión cambió el perfil de densidad. La nave entra más caliente y más rápido de lo previsto.',
+    hint: jr ? 'Un escudo ≥ 35% soporta la entrada; si no, reduce velocidad gastando Δv.' : '',
+    options:[
+      { key:'a', label:'Mantener el escudo térmico y confiar en el blindaje', req: s.shield >= 35, reqText:'Blindaje ≥ 35%', dmgOk:6, dmgFail:58, tag:'BLINDAJE' },
+      { key:'b', label:'Frenado propulsivo antes de la interfaz', req: s.deltaV >= reqDeltaV()+1.0, reqText:'Δv extra ≥ 1.0 km/s', dmgOk:10, dmgFail:38, tag:'EVASIÓN' }
+    ]};
+  return {
+    title:'FALLO DEL BUS DE POTENCIA',
+    nasa:{ ref:'NASA Earthdata · Meteorología espacial', data:'Una partícula energética puede voltear un bit (single-event upset) y dejar un subsistema en estado inconsistente; la respuesta estándar es el modo seguro.', url:'https://www.earthdata.nasa.gov/news/feature-articles/its-always-sunny-space-thats-problem-satellite-teams', pred:'Con 10% de excedente de energía se conmuta al bus redundante; sin él, se pierden instrumentos.' },
+    desc:'La descarga electrostática del enjambre quemó un regulador. La energía disponible cae y los sistemas se reinician.',
+    hint: jr ? 'Un excedente de energía ≥ 10% permite conmutar al bus redundante sin apagones.' : '',
+    options:[
+      { key:'a', label:'Conmutar al bus de potencia redundante', req: s.power >= reqPower()*1.1, reqText:'Excedente ≥ 10% energía', dmgOk:4, dmgFail:56, tag:'TÁCTICA' },
+      { key:'b', label:'Apagar instrumentos no esenciales y seguir', req:true, reqText:'', dmgOk:20, dmgFail:20, tag:'PASIVO' }
+    ]};
+}
+
+function triggerFlightAnomaly(phase){
+  const cfg = buildHazard(phase || 0);
+  hazardsResolved += 1;
+  state.anomalyCfg = cfg;
+  state.hazardPhase = phase || 0;
+
+  $('event-title').innerText = (phase ? 'SEGUNDA ANOMALÍA · ' : '') + cfg.title;
+  $('event-desc').innerText = cfg.desc;
+
+  // Ficha con el dato real de NASA que sostiene este escenario
+  const nasaEl = $('event-nasa');
+  if(cfg.nasa){
+    nasaEl.classList.remove('hidden');
+    nasaEl.innerHTML = '<div class="flex items-center justify-between gap-2 mb-1">' +
+      '<span class="font-orbitron text-[9px] text-cyan-400 tracking-wider"><i class="fa-solid fa-satellite-dish mr-1"></i>DATO REAL DE NASA</span>' +
+      '<a href="' + cfg.nasa.url + '" target="_blank" rel="noopener" class="text-[9px] text-cyan-500 hover:text-cyan-300">' + cfg.nasa.ref + ' <i class="fa-solid fa-arrow-up-right-from-square"></i></a></div>' +
+      cfg.nasa.data +
+      '<div class="mt-1.5 pt-1.5 border-t border-cyan-900/60 text-cyan-300"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Predicción: ' + cfg.nasa.pred + '</div>';
+  } else { nasaEl.classList.add('hidden'); }
+  const hintEl = $('event-hint');
+  if(cfg.hint){ hintEl.classList.remove('hidden'); hintEl.innerHTML = '<i class="fa-solid fa-lightbulb mr-1"></i>' + cfg.hint; }
+  else hintEl.classList.add('hidden');
+
+  const colorOf = (tag) => tag === 'RIESGO' ? '#f59e0b' : tag === 'PASIVO' ? '#94a3b8' : '#22d3ee';
+  $('event-options').innerHTML = cfg.options.map(o => {
+    const c = o.req ? colorOf(o.tag) : '#475569';
+    const badge = o.req
+      ? '<span class="tag border-emerald-500/50 text-emerald-400 ml-1">DISPONIBLE</span>'
+      : '<span class="tag border-red-500/50 text-red-400 ml-1">' + o.reqText + '</span>';
+    return '<button onclick="chooseDecision(\'' + o.key + '\')" class="w-full py-2.5 px-3 rounded border font-mono text-[10.5px] text-left transition hover:brightness-125" ' +
+      'style="border-color:' + c + '66;background:' + c + '14;color:' + (o.req ? '#e2e8f0' : '#64748b') + '">' +
+      '<span class="font-orbitron text-[9px] mr-1.5" style="color:' + c + '">[' + o.tag + ']</span>' + o.label + badge + '</button>';
+  }).join('');
+
+  $('sim-event-modal').classList.remove('hidden');
+  $('sim-event-modal').classList.remove('pop-in');
+  void $('sim-event-modal').offsetWidth;
+  $('sim-event-modal').classList.add('pop-in');
+  playSound('alert');
+  startDecisionTimer(20);
+}
+
+let decisionTimerId = null;
+function startDecisionTimer(seconds){
+  clearInterval(decisionTimerId);
+  let left = seconds;
+  const bar = $('event-timer-bar'), label = $('event-timer-label');
+  label.innerText = left + 's';
+  bar.style.width = '100%';
+  decisionTimerId = setInterval(() => {
+    left -= 1;
+    label.innerText = Math.max(0,left) + 's';
+    bar.style.width = clamp((left/seconds)*100,0,100) + '%';
+    if(left <= 5 && left > 0) playSound('beep');
+    if(left <= 0){
+      clearInterval(decisionTimerId);
+      if(!$('sim-event-modal').classList.contains('hidden')) chooseDecision('b', true);
+    }
+  }, 1000);
+}
+
+/* ---------------- ELECCIÓN → AVISO DE AMENAZA → RESULTADO ---------------- */
+function chooseDecision(key, auto){
+  clearInterval(decisionTimerId);
+  $('sim-event-modal').classList.add('hidden');
+  const cfg = state.anomalyCfg;
+  const opt = cfg.options.find(o => o.key === key) || cfg.options[cfg.options.length-1];
+  const used = !!opt.req;
+  const dmg = used ? opt.dmgOk : opt.dmgFail;
+  state.decision = { key, label: opt.label, tag: opt.tag, req: used, dmg, phase: state.hazardPhase || 0 };
+
+  if(auto) showNotification('Sin respuesta a tiempo: se aplicó la opción por defecto.', 'error');
+  showApproachAlert(opt, used);
+}
+
+function showApproachAlert(opt, used){
+  const d = state.destination;
+  const body = d.id === 'mars' ? 'FRENTE DE POLVO' : d.id === 'europa' ? 'FLUJO DE PARTÍCULAS' : 'OBJETO A 12 km/s';
+  const risk = clamp(d.risk * 13 + (used ? 0 : 24), 0, 100);
+
+  $('alert-title').innerText = '¡' + body + ' EN CURSO DE INTERCEPCIÓN!';
+  $('alert-sub').innerText = 'Decisión registrada: ' + opt.tag + ' · maniobra en ejecución';
+  $('alert-count').innerText = '3';
+  const riskEl = $('alert-risk');
+  riskEl.innerText = risk >= 70 ? 'CRÍTICO' : risk >= 45 ? 'ALTO' : risk >= 26 ? 'MEDIO' : 'BAJO';
+  riskEl.style.color = risk >= 70 ? '#ef4444' : risk >= 45 ? '#f59e0b' : '#22c55e';
+  riskEl.style.borderColor = (risk >= 70 ? '#ef4444' : risk >= 45 ? '#f59e0b' : '#22c55e') + '88';
+  $('alert-risk-bar').style.width = risk + '%';
+  $('alert-risk-bar').style.background = risk >= 70 ? '#ef4444' : risk >= 45 ? '#f59e0b' : '#22c55e';
+  $('alert-detail').innerHTML = used
+    ? '<i class="fa-solid fa-check text-emerald-400 mr-1"></i>Tu hardware cubre el requisito de la maniobra. La amenaza del entorno baja a ' + risk + '%.'
+    : '<i class="fa-solid fa-triangle-exclamation text-red-400 mr-1"></i>Tu hardware no cubre el requisito: la amenaza del entorno sube a ' + risk + '%.';
+
+  // Predicción del escenario (dato NASA + qué esperar)
+  const cfg0 = state.anomalyCfg || {};
+  const nasaLine = $('alert-nasa');
+  if(nasaLine){
+    if(cfg0.nasa){
+      nasaLine.innerHTML = '<i class="fa-solid fa-satellite-dish mr-1 text-cyan-400"></i><b>' + cfg0.nasa.ref + ':</b> ' + cfg0.nasa.pred;
+    } else { nasaLine.innerHTML = ''; }
+  }
+
+  $('alert-overlay').classList.remove('hidden');
+  playSound('alert');
+  shakeScreen('soft');
+
+  // Los meteoritos ya están en camino: se ven chocar contra la nave
+  const strikes = used ? 2 : 9;
+  spawnMeteorStrike(strikes, used ? 0.5 : 1);
+
+  state.danger = risk;
+  const vig = $('danger-vignette');
+  if(vig){ vig.style.opacity = (risk/100 * 0.9).toFixed(2); vig.classList.toggle('critical', risk >= 55); }
+  if(dangerLight) dangerLight.intensity = (risk/100) * 6;
+
+  let n = 3;
+  const tick = () => {
+    n -= 1;
+    if(n > 0){
+      $('alert-count').innerText = n;
+      playSound('beep');
+      later(tick, 850);
+    } else {
+      $('alert-count').innerText = 'IMPACTO';
+      later(() => {
+        $('alert-overlay').classList.add('hidden');
+        resolveDecision();
+      }, 520);
+    }
+  };
+  later(tick, 850);
+}
+
+/* ---------------- RESULTADO: DECISIÓN + HERRAMIENTAS ---------------- */
+function resolveDecision(){
+  const dec = state.decision;
+  const s = state.stats;
+  const d = state.destination;
+
+  let damage = Number(dec.req ? dec.dmgOk : dec.dmgFail);
+  if(!isFinite(damage)) damage = Number(dec.dmg) || 0;
+  if(dec.tag === 'EVASIÓN' || dec.tag === 'DEFENSA' || dec.tag === 'BLINDAJE'){
+    damage = Math.max(0, damage - Math.floor(s.shield / 25));
+  }
+  if(d.id === 'mars' && state.selection.power && state.selection.power.isNuclear) damage = Math.max(0, damage - 4);
+  if(d.id === 'europa' && s.shield >= 60) damage = Math.max(0, damage - 6);
+
+  const baseInt = isFinite(state.integrity) ? state.integrity : 100;
+  setIntegrity(baseInt - damage);
+  const success = dec.req ? true : (Math.random() < 0.35);
+  const lost = !success && state.integrity <= 20;
+
+  state.outcome = { success, damage, tag: dec.tag, req: dec.req };
+  state.missionLost = lost;
+
+  const box = $('outcome-box'), icon = $('outcome-icon'), title = $('outcome-title'), text = $('outcome-text'), tools = $('outcome-tools');
+  box.classList.remove('panel-danger');
+
+  if(lost){
+    icon.className = 'w-16 h-16 mx-auto rounded-full grid place-items-center text-2xl mb-3 border border-red-500 text-red-400 bg-red-950/60';
+    icon.innerHTML = '<i class="fa-solid fa-explosion"></i>';
+    title.innerText = 'PÉRDIDA DEL VEHÍCULO';
+    title.style.color = '#ef4444';
+    box.classList.add('panel-danger');
+    text.innerText = 'El daño acumulado superó la resistencia estructural del casco. La telemetría se perdió a ' +
+      fmtNum(Math.round((flightProgress/100)*d.distKm)) + ' km de la Tierra.';
+    playSound('fail');
+    shakeScreen('hard');
+  } else if(success){
+    icon.className = 'w-16 h-16 mx-auto rounded-full grid place-items-center text-2xl mb-3 border border-emerald-500 text-emerald-400 bg-emerald-950/60';
+    icon.innerHTML = '<i class="fa-solid fa-shield-halved"></i>';
+    title.innerText = (damage === 0 && dec.req) ? 'MANIOBRA PERFECTA' : 'AMENAZA SUPERADA';
+    title.style.color = '#22c55e';
+    text.innerText = dec.req
+      ? 'El diseño cubrió el requisito de la maniobra: la nave atravesó la amenaza con ' + damage + '% de daño estructural.'
+      : 'Sin el hardware adecuado la maniobra fue improvisada: se logró por margen de suerte, con ' + damage + '% de daño.';
+    playSound('success');
+    shakeScreen('soft');
+  } else {
+    icon.className = 'w-16 h-16 mx-auto rounded-full grid place-items-center text-2xl mb-3 border border-amber-500 text-amber-400 bg-amber-950/50';
+    icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+    title.innerText = 'DAÑO CRÍTICO A BORDO';
+    title.style.color = '#f59e0b';
+    box.classList.add('panel-danger');
+    text.innerText = 'La maniobra falló por falta de hardware específico. La nave sobrevive con ' + state.integrity + '% de integridad, pero varios instrumentos quedaron inutilizados.';
+    playSound('fail');
+    shakeScreen('hard');
+  }
+
+  const rows = [];
+  rows.push('<div class="flex justify-between"><span class="text-slate-500">Decisión</span><span class="text-slate-200">' + dec.tag + '</span></div>');
+  rows.push('<div class="flex justify-between"><span class="text-slate-500">Requisito</span><span class="' + (dec.req ? 'text-emerald-400' : 'text-red-400') + '">' + (dec.req ? 'CUMPLIDO' : 'NO CUMPLIDO') + '</span></div>');
+  rows.push('<div class="flex justify-between"><span class="text-slate-500">Daño aplicado</span><span class="text-amber-400">-' + damage + '%</span></div>');
+  rows.push('<div class="flex justify-between"><span class="text-slate-500">Impactos recibidos</span><span class="text-red-300">' + impactHits + ' de ' + (dec.req ? 2 : 9) + '</span></div>');
+  rows.push('<div class="flex justify-between"><span class="text-slate-500">Integridad final</span><span class="' + (state.integrity >= 60 ? 'text-emerald-400' : 'text-red-400') + '">' + state.integrity + '%</span></div>');
+  if(state.selection.chassis) rows.push('<div class="flex justify-between"><span class="text-slate-500">Blindaje del chasis</span><span class="text-blue-300">' + state.selection.chassis.shield + '%</span></div>');
+  if(state.selection.propulsion) rows.push('<div class="flex justify-between"><span class="text-slate-500">Empuje disponible</span><span class="text-orange-300">' + state.selection.propulsion.thrust + ' N</span></div>');
+  if(state.selection.power) rows.push('<div class="flex justify-between"><span class="text-slate-500">Energía</span><span class="text-amber-300">' + s.power + ' W</span></div>');
+  tools.innerHTML = rows.join('');
+  tools.className = 'text-left text-[10px] font-mono space-y-1 mb-4 bg-[#050a12] border border-slate-800 rounded p-2.5';
+
+  $('outcome-overlay').classList.remove('hidden');
+  setThreatLabel(damage);
+}
+
+function closeOutcome(){
+  playSound('click');
+  $('outcome-overlay').classList.add('hidden');
+  if(state.missionLost){
+    pauseFlight();
+    stopTelemetryFeed();
+    later(() => finishSimulation(true), 300);
+    return;
+  }
+  startFlight();
+}
+
+function shakeScreen(kind){
+  const el = document.querySelector('main');
+  if(!el) return;
+  const cls = kind === 'hard' ? 'shake-hard' : 'shake-soft';
+  el.classList.remove('shake-soft','shake-hard');
+  void el.offsetWidth;
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), 800);
+}
+
+/* ================================================================== */
+/* FASE 4 — INFORME                                                    */
+/* ================================================================== */
+function finishSimulation(lost){
+  clearInterval(flightInterval);
+  stopTelemetryFeed();
+  $('phase-3-ui').classList.add('hidden');
+  $('phase-4-ui').classList.remove('hidden');
+  updatePhaseIndicators(4);
+
+  const d = state.destination, s = state.stats;
+  const integrity = state.integrity;
+  const commOK = s.comm >= reqComm();
+  const scienceReturned = commOK ? s.science : Math.round(s.science * 0.3);
+
+  let score = 30;
+  if(s.power >= reqPower()) score += 12;
+  if(s.deltaV >= reqDeltaV()) score += 12;
+  if(s.mass <= d.maxMass) score += 8;
+  if(s.budget <= d.budget) score += 8;
+  if(commOK) score += 12;
+  score += Math.round(integrity * 0.18);
+  if(state.decision && state.decision.req) score += 6;
+  if(lost) score = Math.min(score, 32);
+  score = clamp(Math.round(score), 0, 100);
+
+  const eff = clamp(Math.round((scienceReturned / Math.max(1, s.budget)) * 12), 0, 100);
+
+  let title, sub, badge, color, icon;
+  if(lost){
+    title = 'MISIÓN PERDIDA'; badge = 'INFORME DE FALLA'; color = '#ef4444'; icon = 'fa-explosion';
+    sub = 'La nave no superó la amenaza ambiental. El comité revisará el diseño antes de autorizar un nuevo intento.';
+  } else if(score >= 85 && integrity >= 90){
+    title = 'MISIÓN EXITOSA'; badge = 'EVALUACIÓN MISIONAL'; color = '#22c55e'; icon = 'fa-award';
+    sub = 'Todos los protocolos científicos y de estabilidad técnica se cumplieron. Datos completos recibidos en Tierra.';
+  } else if(score >= 60){
+    title = 'ÉXITO PARCIAL'; badge = 'EVALUACIÓN MISIONAL'; color = '#22d3ee'; icon = 'fa-medal';
+    sub = 'Objetivo alcanzado con reservas operativas: parte de la instrumentación quedó degradada durante el tránsito.';
+  } else {
+    title = 'MISIÓN DEGRADADA'; badge = 'EVALUACIÓN MISIONAL'; color = '#f59e0b'; icon = 'fa-triangle-exclamation';
+    sub = 'La nave llegó al destino, pero el diseño no cubrió los requisitos mínimos de la misión.';
+  }
+
+  const iconBox = $('debrief-icon-container');
+  iconBox.className = 'w-20 h-20 mx-auto mb-3 rounded-full grid place-items-center text-3xl border-2';
+  iconBox.style.color = color;
+  iconBox.style.borderColor = color;
+  iconBox.style.background = color + '18';
+  iconBox.style.boxShadow = '0 0 30px ' + color + '55';
+  iconBox.innerHTML = '<i class="fa-solid ' + icon + '"></i>';
+
+  $('debrief-badge-label').innerText = badge;
+  $('debrief-badge-label').style.color = color;
+  $('debrief-title').innerText = title;
+  $('debrief-title').style.color = '#fff';
+  $('debrief-subtitle').innerText = sub;
+  $('debrief-score').innerText = score + '/100';
+  $('debrief-eff').innerText = eff + '%';
+  $('debrief-science').innerText = fmtNum(scienceReturned) + ' pts';
+
+  const log = [];
+  log.push('<p class="text-emerald-400"><i class="fa-solid fa-check mr-1"></i>Inserción en ' + d.name + ' (' + d.title + ') ' + (lost ? 'no confirmada.' : 'conseguida.') + '</p>');
+  log.push('<p class="text-cyan-300"><i class="fa-solid fa-bolt mr-1"></i>Energía: ' + fmtNum(s.power) + ' W verificados (requerido ' + fmtNum(reqPower()) + ' W).</p>');
+  log.push('<p class="text-indigo-300"><i class="fa-solid fa-rocket mr-1"></i>Trayectoria: Δv ' + s.deltaV.toFixed(1) + ' km/s (requerido ' + reqDeltaV().toFixed(1) + ' km/s).</p>');
+  log.push('<p class="' + (integrity >= 90 ? 'text-emerald-400' : 'text-amber-400') + '"><i class="fa-solid fa-shield-halved mr-1"></i>Integridad estructural final: ' + integrity + '%.</p>');
+  log.push('<p class="' + (commOK ? 'text-emerald-400' : 'text-red-400') + '"><i class="fa-solid fa-tower-broadcast mr-1"></i>Enlace: ' + s.comm + '/' + reqComm() + (commOK ? ' — datos completos transmitidos.' : ' — solo el 30% de los datos llegó a Tierra.') + '</p>');
+  if(state.decision){
+    log.push('<p class="' + (state.decision.req ? 'text-emerald-400' : 'text-red-400') + '"><i class="fa-solid fa-code-branch mr-1"></i>Decisión crítica: ' + state.decision.tag + ' — requisito ' + (state.decision.req ? 'cumplido' : 'no cumplido') + '.</p>');
+  }
+  log.push('<p class="text-purple-300"><i class="fa-solid fa-microscope mr-1"></i>Retorno científico: ' + fmtNum(scienceReturned) + ' puntos de datos.</p>');
+  $('debrief-log').innerHTML = log.join('');
+
+  // récord local
+  try{
+    const recs = JSON.parse(localStorage.getItem('astracraft_records') || '[]');
+    recs.push({ date:new Date().toISOString(), destination:d.name, difficulty:state.difficulty, score, scienceReturned, integrity });
+    recs.sort((a,b) => b.score - a.score);
+    localStorage.setItem('astracraft_records', JSON.stringify(recs.slice(0,10)));
+    const best = recs[0];
+    $('debrief-log').innerHTML += '<p class="text-amber-300 border-t border-slate-800 pt-1.5 mt-1.5"><i class="fa-solid fa-star mr-1"></i>Mejor registro local: ' + best.score + '/100 (' + best.destination + ').</p>';
+  }catch(e){ /* almacenamiento no disponible */ }
+
+  state.danger = lost ? 100 : 20;
+  const vig = $('danger-vignette');
+  if(vig){ vig.style.opacity = lost ? '0.5' : '0'; vig.classList.remove('critical'); }
+  if(dangerLight) dangerLight.intensity = lost ? 3 : 0;
+}
+
+/* ================================================================== */
+/* TELEMETRÍA                                                          */
+/* ================================================================== */
+let telemetryTimer = null;
+function startTelemetryFeed(){
+  stopTelemetryFeed();
+  telemetryTimer = setInterval(() => {
+    const t = {
+      temp: -42 + Math.random()*52,
+      signal: 58 + Math.random()*40,
+      voltage: 26 + Math.random()*6
+    };
+    const a = $('iot-temp'), b = $('iot-signal'), c = $('iot-volt');
+    if(a) a.innerText = t.temp.toFixed(1) + ' °C';
+    if(b) b.innerText = Math.round(t.signal) + '%';
+    if(c) c.innerText = t.voltage.toFixed(1) + ' V';
+  }, 1200);
+}
+function stopTelemetryFeed(){
+  if(telemetryTimer){ clearInterval(telemetryTimer); telemetryTimer = null; }
+}
+
+/* ================================================================== */
+/* PREDICCIÓN NASA — escenarios derivados de datos públicos             */
+/* ================================================================== */
+/* IMPORTANTE: las cifras de cada ficha son citas de NASA/JPL/CNEOS.
+   Las probabilidades que calcula esta pantalla son del MODELO DEL
+   SIMULADOR (a partir de tu diseño), no predicciones oficiales.       */
+
+function nasaScenarios(){
+  const d = state.destination, s = state.stats;
+  const launcher = state.selection.launcher;
+  const payloadMass = launcher ? (s.mass - launcher.mass) : s.mass;
+  const base = [];
+  if(!d) return base;
+
+  const push = (o) => base.push(o);
+  if(d.id === 'moon'){
+    push({ name:'Enjambre de micrometeoroides', ref:'NASA HVIT · MMOD',
+      url:'https://ntrs.nasa.gov/api/citations/20190001193/downloads/20190001193.pdf',
+      data:'Meteoroides de 11 a 72 km/s (media 22–23 km/s en órbita terrestre). A 7 km/s una esfera de aluminio atraviesa una placa 4 veces su diámetro.',
+      pred:'Maniobra de esquiva viable con empuje ≥ 300 N; si no, el escudo Whipple absorbe el impacto con daño.',
+      ok: s.thrust >= 300, prob: s.thrust >= 300 ? 88 : 34 });
+    push({ name:'Fallo del bus de potencia', ref:'NASA Earthdata · Meteorología espacial',
+      url:'https://www.earthdata.nasa.gov/news/feature-articles/its-always-sunny-space-thats-problem-satellite-teams',
+      data:'Una partícula energética puede voltear un bit (single-event upset) y dejar un subsistema inconsistente; la respuesta estándar es el modo seguro.',
+      pred:'Con ≥ 10% de excedente de energía se conmuta al bus redundante y se conserva la instrumentación.',
+      ok: s.power >= reqPower()*1.1, prob: s.power >= reqPower()*1.1 ? 86 : 40 });
+    push({ name:'Regolito abrasivo en mecanismos', ref:'NASA Science · Polvo lunar',
+      url:'https://science.nasa.gov/moon/',
+      data:'La superficie lunar es polvo fino y abrasivo: se adhiere a juntas, ópticas y sellos, un reto real para exploradores humanos y robóticos.',
+      pred:'Instrumentos abiertos (taladro, radar) requieren blindaje ≥ 30% para no degradarse al aterrizar.',
+      ok: s.shield >= 30, prob: s.shield >= 30 ? 84 : 46 });
+  } else if(d.id === 'mars'){
+    push({ name:'Tormenta de polvo global', ref:'NASA/JPL · Opportunity 2018',
+      url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/',
+      data:'Tau 10,8 de opacidad, 35 millones de km² cubiertos (un cuarto del planeta), −29 °C y baterías por debajo de 24 V.',
+      pred:'La captación solar cae casi a cero: un RTG o un excedente ≥ 250 W evitan el modo de fallo por baja potencia.',
+      ok: (state.selection.power && state.selection.power.isNuclear) || (s.power - reqPower() >= 250),
+      prob: (state.selection.power && state.selection.power.isNuclear) ? 92 : (s.power - reqPower() >= 250 ? 80 : 30) });
+    push({ name:'Entrada atmosférica violenta', ref:'NASA/JPL · Opportunity 2018',
+      url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/',
+      data:'El polvo modifica la densidad y la opacidad (tau) de la atmósfera: el perfil de entrada real se aparta del previsto en el diseño.',
+      pred:'Escudo ≥ 35% soporta la interfaz; si no, hay que frenar propulsivamente gastando Δv extra.',
+      ok: s.shield >= 35, prob: s.shield >= 35 ? 85 : 38 });
+    push({ name:'Eyección de polvo sobre los paneles', ref:'NASA/JPL · Opportunity 2018',
+      url:'https://www.jpl.nasa.gov/news/opportunity-hunkers-down-during-dust-storm/',
+      data:'El polvo en suspensión se deposita y reduce la generación; en 2018 bastó para dejar al rover sin contacto durante meses.',
+      pred:'Paneles solares sin limpieza pierden rendimiento: el diseño debe cubrir el requisito con margen.',
+      ok: s.power >= reqPower()*1.2, prob: s.power >= reqPower()*1.2 ? 82 : 44 });
+  } else {
+    push({ name:'Cinturón de radiación joviano', ref:'NASA Science · Europa',
+      url:'https://science.nasa.gov/jupiter/moons/europa/',
+      data:'Europa está dentro del entorno radiativo de Júpiter; aun así esconde un océano salado con el doble del agua de todos los océanos terrestres.',
+      pred:'La electrónica falla antes que la estructura: blindaje ≥ 35% mantiene la dosis bajo el umbral operativo.',
+      ok: s.shield >= 35, prob: s.shield >= 35 ? 87 : 26 });
+    push({ name:'Sobrepaso del cinturón externo', ref:'NASA Science · Europa',
+      url:'https://science.nasa.gov/jupiter/moons/europa/',
+      data:'La dosis se acumula en cada órbita: es el ambiente más severo del sistema solar para la electrónica de a bordo.',
+      pred:'Solo blindaje ≥ 55% atraviesa la zona densa; la alternativa es un viraje largo con Δv extra.',
+      ok: s.shield >= 55 || s.deltaV >= reqDeltaV()+1.5, prob: s.shield >= 55 ? 88 : (s.deltaV >= reqDeltaV()+1.5 ? 62 : 22) });
+    push({ name:'Perforación de la corteza de hielo', ref:'NASA Science · Europa (Europa Clipper, 14 oct 2024)',
+      url:'https://science.nasa.gov/jupiter/moons/europa/',
+      data:'Europa Clipper se lanzó el 14 de octubre de 2024 para determinar si bajo la corteza hay entornos capaces de albergar vida.',
+      pred:'Se necesitan radar/taladro y enlace ≥ 500 puntos para transmitir los datos del océano interno.',
+      ok: (s.comm >= reqComm()) && !!(state.selection.payload && (state.selection.payload.type === 'radar' || state.selection.payload.type === 'drill')),
+      prob: (s.comm >= reqComm() ? 84 : 30) });
+  }
+  return base;
+}
+
+function nasaModel(){
+  const scen = nasaScenarios();
+  const r = readiness();
+  if(!scen.length) return { scen:[], success:0, readiness:0, coverage:0, verdict:'Elige un destino para calcular el modelo.', ok:false };
+  const covered = scen.filter(x => x.ok).length;
+  const coverage = Math.round(covered / scen.length * 100);
+  // media ponderada: 40% preparación del diseño + 60% cobertura de escenarios
+  const success = Math.round(r.pct * 0.4 + coverage * 0.6);
+  let verdict, color;
+  if(success >= 85){ verdict = 'Perfil de misión robusto: el diseño cubre casi todos los escenarios documentados.'; color = '#22c55e'; }
+  else if(success >= 60){ verdict = 'Perfil aceptable: uno de los escenarios documentados queda descubierto.'; color = '#22d3ee'; }
+  else if(success >= 35){ verdict = 'Perfil frágil: varios escenarios de NASA no están cubiertos por el hardware.'; color = '#f59e0b'; }
+  else { verdict = 'Perfil de alto riesgo: el diseño no cubre los escenarios documentados.'; color = '#ef4444'; }
+  return { scen, success, readiness:r.pct, coverage, verdict, color, ok:true };
+}
+
+function openNasaPrediction(){
+  playSound('click');
+  const m = nasaModel();
+  const box = $('nasa-model-box');
+  const list = $('nasa-scenarios');
+
+  if(!m.ok){
+    box.innerHTML = '<div class="bg-[#050a12] border border-slate-800 rounded-lg p-4 font-mono text-[11px] text-slate-400">' +
+      '<i class="fa-solid fa-circle-info text-cyan-400 mr-1"></i>Selecciona primero un destino en la fase 1: las predicciones se calculan sobre el ambiente elegido.</div>';
+  } else {
+    box.innerHTML =
+      '<div class="bg-[#050a12] border border-cyan-800/50 rounded-lg p-3 md:p-4">' +
+        '<div class="flex flex-wrap items-center justify-between gap-3 mb-2">' +
+          '<div><span class="text-[9px] font-mono text-slate-500 tracking-widest block">MODELO DEL SIMULADOR · ' + state.destination.name + '</span>' +
+          '<span class="font-orbitron font-extrabold text-2xl" style="color:' + m.color + '">' + m.success + '%</span>' +
+          '<span class="text-[10px] font-mono text-slate-400 ml-2">probabilidad estimada de completar la misión</span></div>' +
+          '<div class="text-right font-mono text-[10px] text-slate-400">preparación ' + m.readiness + '%<br>cobertura de escenarios ' + m.coverage + '%</div>' +
+        '</div>' +
+        '<div class="track thick mb-2"><div class="fill" style="width:' + m.success + '%;background:' + m.color + '"></div></div>' +
+        '<p class="text-[10px] font-mono leading-relaxed" style="color:' + m.color + '">' + m.verdict + '</p>' +
+        '<p class="text-[9px] font-mono text-slate-600 mt-2 leading-relaxed"><i class="fa-solid fa-circle-exclamation mr-1"></i>Este porcentaje lo calcula el simulador con tu diseño. No es una predicción oficial de NASA; las cifras de cada escenario sí proceden de las fuentes citadas.</p>' +
+      '</div>';
+  }
+
+  const scen = m.ok ? m.scen : [];
+  list.innerHTML = scen.map(x => {
+    const c = x.ok ? '#22c55e' : '#f59e0b';
+    return '<div class="bg-[#050a12] border rounded-lg p-3" style="border-color:' + c + '44">' +
+      '<div class="flex items-start justify-between gap-2 mb-1.5">' +
+        '<span class="font-orbitron font-bold text-[11px] text-white leading-tight">' + x.name + '</span>' +
+        '<span class="tag" style="color:' + c + ';border-color:' + c + '66">' + x.prob + '%</span>' +
+      '</div>' +
+      '<a href="' + x.url + '" target="_blank" rel="noopener" class="text-[9px] font-mono text-cyan-500 hover:text-cyan-300 block mb-1.5"><i class="fa-solid fa-link mr-1"></i>' + x.ref + '</a>' +
+      '<p class="text-[10px] font-mono text-slate-400 leading-snug mb-2">' + x.data + '</p>' +
+      '<p class="text-[10px] font-mono leading-snug" style="color:' + c + '"><i class="fa-solid fa-' + (x.ok ? 'check' : 'triangle-exclamation') + ' mr-1"></i>' + x.pred + '</p>' +
+      '<p class="text-[9px] font-mono mt-1.5 pt-1.5 border-t border-slate-800" style="color:' + c + '">' + (x.ok ? 'CUBIERTO por tu diseño' : 'NO CUBIERTO por tu diseño') + '</p>' +
+    '</div>';
+  }).join('') || '<div class="md:col-span-3 text-center font-mono text-[11px] text-slate-600 py-6">Sin destino seleccionado.</div>';
+
+  $('nasa-sources').innerHTML = NASA_SOURCES.map(s2 =>
+    '<div class="flex items-start gap-2 text-[10px] font-mono">' +
+      '<span class="tag whitespace-nowrap" style="color:#22d3ee;border-color:#22d3ee55">' + s2.tag + '</span>' +
+      '<div class="min-w-0"><a href="' + s2.url + '" target="_blank" rel="noopener" class="text-slate-300 hover:text-cyan-300 block">' + s2.title + '</a>' +
+      '<span class="text-slate-500 leading-snug block">' + s2.text + '</span></div>' +
+    '</div>').join('');
+
+  $('nasa-modal').classList.remove('hidden');
+}
+
+function closeNasaPrediction(){
+  playSound('click');
+  $('nasa-modal').classList.add('hidden');
+}
+
+/* ================================================================== */
+/* IMPACTO VISUAL DE METEORITOS                                        */
+/* ================================================================== */
+let impactHits = 0, lastStrikeCount = 0;
+function clearImpacts(){
+  impactHits = 0; lastStrikeCount = 0;
+  if(impactGroup && scene){
+    while(impactGroup.children.length) impactGroup.remove(impactGroup.children[0]);
+  }
+}
+
+function spawnMeteorStrike(count, severity){
+  clearImpacts();
+  lastStrikeCount = count;
+  if(!scene || !shipGroup) return;
+  if(!impactGroup){ impactGroup = new THREE.Group(); scene.add(impactGroup); }
+  const rockGeo = new THREE.DodecahedronGeometry(0.17, 0);
+  const flashGeo = new THREE.SphereGeometry(0.5, 12, 12);
+  for(let i = 0; i < count; i++){
+    const isBig = i % 3 === 0;
+    const rock = new THREE.Mesh(rockGeo, new THREE.MeshStandardMaterial({
+      color: isBig ? 0x9a8878 : 0x6f665c, roughness: 0.92, metalness: 0.15,
+      emissive: 0xff4d12, emissiveIntensity: 0.45
+    }));
+    const a = Math.random() * Math.PI * 2;
+    const r = 8 + Math.random() * 6;
+    rock.position.set(Math.cos(a) * r, -2 + Math.random() * 7, Math.sin(a) * r);
+    const sc = isBig ? 1.5 : 0.8 + Math.random() * 0.6;
+    rock.scale.setScalar(sc);
+    rock.userData = {
+      speed: 0.10 + Math.random() * 0.09 + severity * 0.06,
+      delay: i * 170 + Math.random() * 140,
+      hit: false,
+      flash: new THREE.Mesh(flashGeo, new THREE.MeshBasicMaterial({ color: 0xffb066, transparent: true, opacity: 0.85 })),
+      flashOn: false
+    };
+    rock.userData.flash.visible = false;
+    impactGroup.add(rock);
+    impactGroup.add(rock.userData.flash);
+  }
+  playSound('impact');
+}
+
+function updateImpacts(dt, t){
+  if(!impactGroup || !impactGroup.children.length) return;
+  impactGroup.children.forEach(obj => {
+    const u = obj.userData || {};
+    if(u.flashOn){                       // destello de impacto
+      const f = obj;
+      f.scale.multiplyScalar(1.055);
+      f.material.opacity *= 0.90;
+      if(f.material.opacity < 0.04){ f.visible = false; u.flashOn = false; }
+      return;
+    }
+    if(!u.speed || u.hit) return;
+    if(u.delay > 0){ u.delay -= dt * 1000; return; }
+    const dx = -obj.position.x, dy = 1.0 - obj.position.y, dz = -obj.position.z;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz) || 1;
+    obj.position.x += (dx / len) * u.speed;
+    obj.position.y += (dy / len) * u.speed;
+    obj.position.z += (dz / len) * u.speed;
+    obj.rotation.x += 0.09; obj.rotation.z += 0.07;
+    if(len < 1.35){
+      u.hit = true;
+      obj.visible = false;
+      impactHits++;
+      // destello en el punto de impacto
+      const f = u.flash;
+      if(f){
+        f.position.copy(obj.position);
+        f.visible = true;
+        f.scale.setScalar(0.4);
+        f.material.opacity = 0.9;
+        f.userData.flashOn = true;
+      }
+      if(dangerLight) dangerLight.intensity = 8;
+      shakeScreen(impactHits > 3 ? 'hard' : 'soft');
+      playSound('impact');
+    }
+  });
+}
+
+/* ================================================================== */
+/* ARRANQUE                                                            */
+/* ================================================================== */
+function hideLoader(){
+  const l = $('load-screen');
+  if(l){ l.classList.add('hide'); setTimeout(() => { l.style.display = 'none'; }, 600); }
+}
+
+function startExperience(){
+  if(!sceneReady){
+    try{ initThreeJS(); }catch(e){
+      console.warn('WebGL no disponible:', e);
+      const c = $('canvas-container');
+      if(c) c.style.background = 'radial-gradient(circle at 70% 20%, #0b1a2b, #030712 70%)';
+    }
+  }
+  renderDestinations();
+  hideLoader();
+}
+
+// Arranque de seguridad: pase lo que pase, el loader nunca se queda en pantalla
+window.addEventListener('load', () => setTimeout(hideLoader, 2500));
+if(document.readyState === 'complete') setTimeout(hideLoader, 1200);
+else document.addEventListener('DOMContentLoaded', () => setTimeout(hideLoader, 1200));
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>
